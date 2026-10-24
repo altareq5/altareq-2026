@@ -413,7 +413,7 @@ async function saleSave(print){if(!SALE.free)SALE.free=[];if(!SALE.customerId)re
 
 /* ================= فاتورة شراء ================= */
 let PUR=null;
-function newPur(){PUR={supplierId:'',date:todayLocal(),ref:'',lines:[],shipping:0,shipMethod:'cash',paid:0,method:'cash',note:''}}
+function newPur(){PUR={supplierId:'',date:todayLocal(),ref:'',lines:[],free:[],shipping:0,shipMethod:'cash',paid:0,method:'cash',note:''}}
 VIEWS.purchase=function(){if(!PUR)newPur();const its=D.items.filter(i=>i.supplierId===PUR.supplierId);
  view(`<div class="page-head"><h2>فاتورة شراء جديدة <small>Ctrl+S حفظ</small></h2><div class="row"><button class="btn gold" onclick="importPdfModal()">📄 استيراد فاتورة المستورد (PDF)</button><button class="btn ghost" onclick="if(!PUR.lines.length||confirm('هتمسح البنود؟')){newPur();go('purchase')}">فاتورة جديدة</button></div></div>
  <div class="card"><div class="grid g4">
@@ -428,6 +428,7 @@ VIEWS.purchase=function(){if(!PUR)newPur();const its=D.items.filter(i=>i.supplie
   <label>أمتار التوبات <small>(بين كل رقم مسافة)</small><input id="p_meters" placeholder="مثال: 55 60.5 58" onkeydown="if(event.key==='Enter')purAddLine()"></label></div>
   <button class="btn gold" onclick="purAddLine()">إضافة</button><datalist id="dl_pc"></datalist></div>
  <div class="card"><details id="p_q"><summary><b>⚡ إدخال سريع — اكتب الفاتورة كلها سطور</b></summary><p class="muted">كل سطر: <b>اسم الصنف + كود اللون : أمتار التوبات @سعر المتر</b>. السعر اختياري (لو مش مكتوب بياخد آخر سعر شراء).</p><code>بريتي 7 : 66 71.4 @73</code> &nbsp; <code>ارورا 4 : 50.2 50.4</code><textarea id="p_qtxt" rows="5" class="mt"></textarea><div class="row mt"><button class="btn gold" onclick="purQuickAdd()">إضافة الكل للفاتورة</button></div><div id="p_qmsg"></div></details></div>`:'<div class="card muted">اختار المستورد الأول</div>'}
+ ${PUR.supplierId?purFreeCard():''}
  <div class="card"><h3>بنود الفاتورة</h3><div id="p_lines"></div></div><div class="card" id="p_tot"></div>`);
  purRenderLines();purRenderTot()};
 function purSetSup(v){if(PUR.lines.length&&!confirm('تغيير المستورد هيمسح البنود. تكمل؟'))return go('purchase');PUR.supplierId=v;PUR.lines=[];go('purchase')}
@@ -437,7 +438,7 @@ function purAddLine(){const it=byId(D.items,$('#p_item').value);if(!it)return to
  $('#p_meters').value='';$('#p_color').value='';purRenderLines();$('#p_color').focus();toast(`اتضاف ${ms.length} توب`)}
 function purDel(i){PUR.lines.splice(i,1);purRenderLines()}
 function purDelRoll(i,j){PUR.lines[i].meters.splice(j,1);if(!PUR.lines[i].meters.length)PUR.lines.splice(i,1);purRenderLines()}
-const purGoods=()=>PUR.lines.reduce((a,l)=>a+l.meters.reduce((x,m)=>x+m,0)*l.price,0);
+const purGoods=()=>PUR.lines.reduce((a,l)=>a+l.meters.reduce((x,m)=>x+m,0)*l.price,0)+(PUR.free||[]).reduce((a,f)=>a+mLineVal(f),0);
 function purRenderLines(){const el=$('#p_lines');if(!el)return;if(!PUR.lines.length){el.innerHTML='<p class="muted">لسه مفيش بنود</p>';purCalc();return}let tm=0,tr=0;
  el.innerHTML=`<div class="tw"><table class="t"><tr><th>الصنف</th><th>اللون</th><th>التوبات</th><th>الأمتار</th><th>إجمالي الأمتار</th><th>سعر المتر</th><th>القيمة</th><th></th></tr>`+PUR.lines.map((l,i)=>{const m=l.meters.reduce((a,b)=>a+b,0);tm+=m;tr+=l.meters.length;return `<tr><td><b>${esc(item(l.itemId).name)}</b></td><td>${esc(l.color)}</td><td>${l.meters.length}</td><td>${l.meters.map((x,j)=>`<span class="chip static">${fmt(x)} <span class="x" onclick="purDelRoll(${i},${j})">×</span></span>`).join('')}</td><td><b>${fmt(m)}</b></td><td><input style="width:90px" value="${l.price}" onchange="PUR.lines[${i}].price=num(this.value)||PUR.lines[${i}].price;purRenderLines()"></td><td><b>${fmt(m*l.price)}</b></td><td><button class="btn sm danger" onclick="purDel(${i})">حذف</button></td></tr>`}).join('')+`<tr class="sub"><td colspan="2">الإجمالي</td><td>${tr}</td><td></td><td>${fmt(tm)} م</td><td></td><td>${fmt(purGoods())}</td><td></td></tr></table></div>`;purCalc()}
 function purRenderTot(){const el=$('#p_tot');if(!el)return;
@@ -452,12 +453,12 @@ function purRenderTot(){const el=$('#p_tot');if(!el)return;
  <label>ملاحظات<input value="${esc(PUR.note)}" oninput="PUR.note=this.value"></label>
  <div class="row end"><button class="btn gold" onclick="purSave()">حفظ فاتورة الشراء</button></div>`;purCalc()}
 function purCalc(){if(!$('#pt_goods'))return;const g=purGoods(),sh=num(PUR.shipping),owed=g+(PUR.shipMethod==='supplier'?sh:0);$('#pt_goods').textContent=fmt(g);$('#pt_pct').textContent=g?fmt(sh/g*100)+'%':'—';$('#pt_owed').textContent=fmt(owed);$('#pt_rem').textContent=fmt(owed-num(PUR.paid))}
-async function purSave(){if(!PUR.supplierId)return toast('اختار المستورد','err');if(!PUR.lines.length)return toast('الفاتورة فاضية','err');
+async function purSave(){if(!PUR.free)PUR.free=[];if(!PUR.supplierId)return toast('اختار المستورد','err');if(!PUR.lines.length&&!PUR.free.length)return toast('الفاتورة فاضية','err');
  const goods=purGoods(),sh=num(PUR.shipping),f=goods>0?sh/goods:0,now=Date.now();
- const p={id:uid(),no:++D.counters.purchase,supplierId:PUR.supplierId,date:PUR.date,ref:PUR.ref,goods,shipping:sh,shipOnSupplier:PUR.shipMethod==='supplier',shipMethod:PUR.shipMethod==='supplier'?'':PUR.shipMethod,paid:num(PUR.paid),method:PUR.method,note:PUR.note,lines:PUR.lines.map(l=>({...l,meters:[...l.meters]})),createdAt:now,by:ME.name};
+ const p={id:uid(),no:++D.counters.purchase,supplierId:PUR.supplierId,date:PUR.date,ref:PUR.ref,goods,shipping:sh,shipOnSupplier:PUR.shipMethod==='supplier',shipMethod:PUR.shipMethod==='supplier'?'':PUR.shipMethod,paid:num(PUR.paid),method:PUR.method,note:PUR.note,lines:PUR.lines.map(l=>({...l,meters:[...l.meters]})),mlines:PUR.free.map(f=>({name:f.name,rolls:[...f.rolls],qty:f.qty||0,unit:f.unit||'',price:f.price})),createdAt:now,by:ME.name};
  PUR.lines.forEach(l=>{const it=byId(D.items,l.itemId);if(it){it.buy=l.price;it.colors=it.colors||[];if(!it.colors.includes(l.color))it.colors.push(l.color)}l.meters.forEach(m=>D.rolls.push({id:uid(),itemId:l.itemId,color:l.color,meters:m,price:l.price,cost:l.price*(1+f),purchaseId:p.id,status:'in',saleId:null}))});
- D.purchases.push(p);const cnt=p.lines.reduce((a,l)=>a+l.meters.length,0);
- await commit('فاتورة شراء',`#${p.no} — ${sup(p.supplierId).name} — ${cnt} توب — ${fmt(goods)} + شحن ${fmt(sh)}`);newPur();toast('تم حفظ فاتورة الشراء #'+p.no+' ودخل المخزن '+cnt+' توب');go('purchase')}
+ D.purchases.push(p);const cnt=p.lines.reduce((a,l)=>a+l.meters.length,0)+p.mlines.reduce((a,l)=>a+(l.qty?0:l.rolls.length),0);
+ await commit('فاتورة شراء',`#${p.no} — ${sup(p.supplierId).name} — ${cnt} توب — ${fmt(goods)} + شحن ${fmt(sh)}`);newPur();toast('تم حفظ فاتورة الشراء #'+p.no+(p.lines.length?' ودخل المخزن '+p.lines.reduce((a,l)=>a+l.meters.length,0)+' توب':'')+(p.mlines.length?' — '+p.mlines.length+' بند من غير مخزن':''));go('purchase')}
 
 
 /* ================= استيراد فاتورة المستورد PDF ================= */
@@ -520,7 +521,7 @@ VIEWS.invoices=function(){const q=INV.q.trim();const inR=d=>(!INV.from||d>=INV.f
  if(INV.tab==='sales'){const list=D.sales.filter(s=>inR(s.date)&&(!q||String(s.no)===q||cust(s.customerId).name.includes(q))).sort((a,b)=>b.createdAt-a.createdAt);
   rows=`<tr><th>رقم</th><th>التاريخ</th><th>العميل</th><th>توبات</th><th>صافي</th><th>المدفوع معاها</th><th>الحالة</th><th></th></tr>`+list.map(s=>`<tr class="${s.cancelled?'cancel':''}"><td>#${s.no}</td><td>${fd(s.date)}</td><td>${esc(cust(s.customerId).name)}</td><td>${saleRollCount(s)}${s.manual?' <small>(حساب يوم)</small>':''}</td><td>${fmt(saleNet(s))}</td><td>${fmt(s.paid)}</td><td>${s.cancelled?`<span class="badge b-red">ملغاة</span>`:saleReturns(s.id).length?'<span class="badge b-amber">عليها مرتجع</span>':'<span class="badge b-green">سليمة</span>'}</td><td><button class="btn sm ghost" onclick="showSale('${s.id}')">عرض / طباعة</button></td></tr>`).join('');
  }else{const list=D.purchases.filter(p=>inR(p.date)&&(!q||String(p.no)===q||sup(p.supplierId).name.includes(q))).sort((a,b)=>b.createdAt-a.createdAt);
-  rows=`<tr><th>رقم</th><th>التاريخ</th><th>المستورد</th><th>توبات</th><th>البضاعة</th><th>الشحن</th><th>المدفوع</th><th>الحالة</th><th></th></tr>`+list.map(p=>`<tr class="${p.cancelled?'cancel':''}"><td>#${p.no}</td><td>${fd(p.date)}</td><td>${esc(sup(p.supplierId).name)}</td><td>${p.lines.reduce((a,l)=>a+l.meters.length,0)}</td><td>${fmt(p.goods)}</td><td>${fmt(p.shipping)}</td><td>${fmt(p.paid)}</td><td>${p.cancelled?'<span class="badge b-red">ملغاة</span>':'<span class="badge b-green">سليمة</span>'}</td><td><button class="btn sm ghost" onclick="showPur('${p.id}')">عرض / طباعة</button></td></tr>`).join('')}
+  rows=`<tr><th>رقم</th><th>التاريخ</th><th>المستورد</th><th>توبات</th><th>البضاعة</th><th>الشحن</th><th>المدفوع</th><th>الحالة</th><th></th></tr>`+list.map(p=>`<tr class="${p.cancelled?'cancel':''}"><td>#${p.no}</td><td>${fd(p.date)}</td><td>${esc(sup(p.supplierId).name)}</td><td>${p.lines.reduce((a,l)=>a+l.meters.length,0)+(p.mlines||[]).reduce((a,l)=>a+(l.qty?0:l.rolls.length),0)}${(p.mlines||[]).length?' <small>(منهم من غير مخزن)</small>':''}${p.opening?' <small>(جرد)</small>':''}</td><td>${fmt(p.goods)}</td><td>${fmt(p.shipping)}</td><td>${fmt(p.paid)}</td><td>${p.cancelled?'<span class="badge b-red">ملغاة</span>':'<span class="badge b-green">سليمة</span>'}</td><td><button class="btn sm ghost" onclick="showPur('${p.id}')">عرض / طباعة</button></td></tr>`).join('')}
  view(`<div class="page-head"><h2>الفواتير</h2>${isAdmin()?'<button class="btn" onclick="dayImportModal()">📥 استيراد حساب يوم</button>':''}</div><div class="tabs"><button class="${INV.tab==='sales'?'on':''}" onclick="INV.tab='sales';go('invoices')">فواتير البيع</button><button class="${INV.tab==='pur'?'on':''}" onclick="INV.tab='pur';go('invoices')">فواتير الشراء</button></div>
  <div class="card"><div class="grid g4"><label>بحث (رقم أو اسم)<input value="${esc(INV.q)}" onchange="INV.q=this.value;go('invoices')"></label><label>من<input type="date" value="${INV.from}" onchange="INV.from=this.value;go('invoices')"></label><label>إلى<input type="date" value="${INV.to}" onchange="INV.to=this.value;go('invoices')"></label></div>
  <div class="tw"><table class="t">${rows}</table></div></div>`)};
@@ -726,7 +727,7 @@ function saleDoc(s){if(s.manual||(s.mlines||[]).length)return manualSaleDoc(s);c
 function purDoc(p){let tm=0,tr=0;const f=p.goods?p.shipping/p.goods:0;
  return `<div class="doc">${p.cancelled?'<div class="stamp">ملغاة</div>':''}${band()}<div class="inner"><div class="meta"><div><div class="ttl">فاتورة شراء</div><div>رقم: <b>${p.no}</b>${p.ref?` — رقم المستورد: <b>${esc(p.ref)}</b>`:''}</div><div>التاريخ: <b>${fd(p.date)}</b></div></div><div class="box"><div>المستورد: <b>${esc(sup(p.supplierId).name)}</b></div><div>سجّلها: ${esc(p.by||'')}</div></div></div>
  <table><tr><th>م</th><th>الصنف</th><th>كود اللون</th><th>عدد التوبات</th><th>أمتار التوبات</th><th>إجمالي الأمتار</th><th>سعر المتر</th><th>التكلفة بعد الشحن</th><th>القيمة</th></tr>
- ${p.lines.map((l,k)=>{const m=l.meters.reduce((a,b)=>a+b,0);tm+=m;tr+=l.meters.length;return `<tr><td>${k+1}</td><td><b>${esc(item(l.itemId).name)}</b></td><td>${esc(l.color)}</td><td>${l.meters.length}</td><td class="ms">${l.meters.map(fmt).join(' • ')}</td><td>${fmt(m)}</td><td>${fmt(l.price)}</td><td>${fmt(l.price*(1+f))}</td><td><b>${fmt(m*l.price)}</b></td></tr>`}).join('')}
+ ${p.lines.map((l,k)=>{const m=l.meters.reduce((a,b)=>a+b,0);tm+=m;tr+=l.meters.length;return `<tr><td>${k+1}</td><td><b>${esc(item(l.itemId).name)}</b></td><td>${esc(l.color)}</td><td>${l.meters.length}</td><td class="ms">${l.meters.map(fmt).join(' • ')}</td><td>${fmt(m)}</td><td>${fmt(l.price)}</td><td>${fmt(l.price*(1+f))}</td><td><b>${fmt(m*l.price)}</b></td></tr>`}).join('')}${(p.mlines||[]).map((l,k)=>{const m=mLineM(l);tm+=m;tr+=l.qty?0:l.rolls.length;return `<tr><td>${p.lines.length+k+1}</td><td><b>${esc(l.name)}</b><br><small>من غير مخزن</small></td><td>—</td>${l.qty?`<td colspan="3">${l.qty} ${esc(l.unit)}</td>`:`<td>${l.rolls.length}</td><td class="ms">${l.rolls.map(fmt).join(' • ')}</td><td>${fmt(m)}</td>`}<td>${fmt(l.price)}</td><td>${fmt(l.price*(1+f))}</td><td><b>${fmt(mLineVal(l))}</b></td></tr>`}).join('')}
  <tr><td colspan="3"><b>الإجمالي</b></td><td><b>${tr}</b></td><td></td><td><b>${fmt(tm)}</b></td><td colspan="2"></td><td><b>${fmt(p.goods)}</b></td></tr></table>
  <div class="totals"><div style="flex:1">${p.note?'<b>ملاحظات:</b> '+esc(p.note):''}</div><table><tr><td>إجمالي البضاعة</td><td>${fmt(p.goods)}</td></tr><tr><td>الشحن ${p.shipOnSupplier?'(على المستورد)':'('+(METHODS[p.shipMethod]||'')+')'}</td><td>${fmt(p.shipping)}</td></tr><tr class="grand"><td>المطلوب للمستورد</td><td>${fmt(purOwed(p))}</td></tr><tr><td>المدفوع (${METHODS[p.method]})</td><td>${fmt(p.paid)}</td></tr><tr><td>الباقي من الفاتورة</td><td>${fmt(purOwed(p)-p.paid)}</td></tr></table></div>${foot()}</div></div>`}
 function statementDoc(cid){const c=cust(cid),st=custStatement(cid),b=custBalance(cid);
@@ -1381,8 +1382,27 @@ function resolveLogin(t){if(t.includes('@'))return t;const u=D.users.find(x=>Str
 function rememberLogin(u){try{const m=loginMap();if(u.email)m[String(u.username).toLowerCase()]=String(u.email).toLowerCase();localStorage.setItem('altareq_logins',JSON.stringify(m));localStorage.setItem('altareq_lastlogin',u.username)}catch(e){}}
 function lastLoginName(){try{return localStorage.getItem('altareq_lastlogin')||''}catch(e){return ''}}
 
+
+/* ===== فاتورة شراء من غير ما تدخل المخزن ===== */
+function purFreeCard(){if(!PUR.free)PUR.free=[];const names=[...new Set([...D.items.filter(i=>i.supplierId===PUR.supplierId).map(i=>i.name),...D.items.map(i=>i.name)])].sort(natSort);
+ return `<div class="card" style="border:1px dashed var(--gold)"><h3>➕ بضاعة من غير ما تدخل المخزن</h3>
+ <div class="grid g5"><label>الصنف<input id="pf_name" list="dl_pfn" placeholder="مثلاً همر"></label>
+ <label>بالـ<select id="pf_unit" onchange="$('#pf_mlab').textContent=this.value==='م'?'أمتار التوبات (بين كل رقم مسافة)':'العدد';$('#pf_m').placeholder=this.value==='م'?'60 61.5 58':'مثلاً 5'"><option value="م">التوب بالمتر</option><option value="قطعة">بالقطعة</option><option value="توب">بالتوب (سعر ثابت)</option></select></label>
+ <label><span id="pf_mlab">أمتار التوبات (بين كل رقم مسافة)</span><input id="pf_m" placeholder="60 61.5 58" onkeydown="if(event.key==='Enter')purFreeAdd()"></label>
+ <label>سعر الشراء<input id="pf_price" inputmode="decimal" onkeydown="if(event.key==='Enter')purFreeAdd()"></label>
+ <button class="btn gold" style="align-self:end;margin-bottom:8px" onclick="purFreeAdd()">إضافة</button></div>
+ <datalist id="dl_pfn">${names.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
+ <p class="muted" style="font-size:13px;margin:0">البضاعة دي بتتحسب على المستورد بفلوسها (والدفع والشحن عادي)، بس مش بتدخل المخزن. تقدر تدخّلها المخزن بعدين من الجرد.</p></div>`}
+function purFreeAdd(){const name=$('#pf_name').value.trim(),unit=$('#pf_unit').value,price=num($('#pf_price').value);if(!name)return toast('اكتب اسم الصنف','err');if(!(price>0))return toast('اكتب سعر الشراء','err');
+ if(unit==='م'){const ms=parseMeters($('#pf_m').value);if(!ms.length)return toast('اكتب أمتار التوبات','err');PUR.free.push({name,rolls:ms,qty:0,unit:'',price})}
+ else{const q=num($('#pf_m').value);if(!(q>0))return toast('اكتب العدد','err');PUR.free.push({name,rolls:[],qty:q,unit,price})}
+ $('#pf_m').value='';$('#pf_name').value='';$('#pf_name').focus();purRenderLines();toast('اتضاف')}
+function purFreeDel(i){PUR.free.splice(i,1);purRenderLines()}
+const _purRenderLines=purRenderLines;purRenderLines=function(){_purRenderLines();const el=$('#p_lines');if(!el||!PUR.free||!PUR.free.length)return;if(!PUR.lines.length)el.innerHTML='';
+ el.insertAdjacentHTML('beforeend',`<div class="tw mt"><table class="t"><tr><th>من غير مخزن</th><th>التوبات / العدد</th><th>الأمتار</th><th>إجمالي الأمتار</th><th>السعر</th><th>القيمة</th><th></th></tr>${PUR.free.map((f,i)=>`<tr><td><b>${esc(f.name)}</b></td><td>${f.qty?f.qty+' '+esc(f.unit):f.rolls.length}</td><td>${f.qty?'':f.rolls.map(fmt).join(' • ')}</td><td>${f.qty?'':fmt(mLineM(f))}</td><td>${fmt(f.price)}</td><td><b>${fmt(mLineVal(f))}</b></td><td><button class="btn sm danger" onclick="purFreeDel(${i})">حذف</button></td></tr>`).join('')}<tr class="sub"><td colspan="5">إجمالي الفاتورة كلها</td><td>${fmt(purGoods())}</td><td></td></tr></table></div>`);purCalc()};
+
 /* ================= تطبيق قابل للتسطيب + تحديث تلقائي ================= */
-const APP_VERSION='202610240858';
+const APP_VERSION='202610241354';
 if(/^https?:$/.test(location.protocol)&&'serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 let INSTALL_EVT=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();INSTALL_EVT=e;const b=$('#installBtn');if(b)b.hidden=false});
 async function installApp(){if(!INSTALL_EVT)return toast('من قايمة المتصفح (⋮) اختار «تثبيت التطبيق» أو Install','err');INSTALL_EVT.prompt();await INSTALL_EVT.userChoice;INSTALL_EVT=null;const b=$('#installBtn');if(b)b.hidden=true}
