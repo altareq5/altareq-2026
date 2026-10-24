@@ -1435,12 +1435,12 @@ async function purEditSave(){const p=byId(D.purchases,PED.id),ch=[];if(PED.lines
  await commit('تعديل فاتورة شراء',`#${p.no} — ${sup(p.supplierId).name} — ${ch.join(' • ')}${p.opening?'':' — الإجمالي '+fmt(before)+' ← '+fmt(p.goods)}`);toast('✔ اتحفظ التعديل');showPur(p.id)}
 
 /* ================= تطبيق قابل للتسطيب + تحديث تلقائي ================= */
-const APP_VERSION='202610241607';
+const APP_VERSION='202610241609';
 if(/^https?:$/.test(location.protocol)&&'serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 let INSTALL_EVT=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();INSTALL_EVT=e;const b=$('#installBtn');if(b)b.hidden=false});
 async function installApp(){if(!INSTALL_EVT)return toast('من قايمة المتصفح (⋮) اختار «تثبيت التطبيق» أو Install','err');INSTALL_EVT.prompt();await INSTALL_EVT.userChoice;INSTALL_EVT=null;const b=$('#installBtn');if(b)b.hidden=true}
 async function checkUpdate(){if(!/^https?:$/.test(location.protocol))return;try{const v=(await (await fetch('version.txt?'+Date.now(),{cache:'no-store'})).text()).trim();if(v&&v!==APP_VERSION&&!$('#updBar')){const d=document.createElement('div');d.id='updBar';d.style.cssText='position:fixed;bottom:16px;right:16px;z-index:300;background:#0f1f3a;color:#fff;padding:12px 18px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.3);font-weight:700;display:flex;gap:12px;align-items:center';d.innerHTML='🆕 فيه تحديث جديد للبرنامج <button class="btn sm gold" onclick="if(Cloud.dirty&&!confirm(\'فيه تعديلات لسه بترفع — استنى ثواني. تحدّث برضه؟\'))return;location.reload()">حدّث دلوقتي</button>';document.body.appendChild(d)}}catch(e){}}
-setInterval(checkUpdate,10*60*1000);window.addEventListener('focus',checkUpdate);setTimeout(checkUpdate,5000);
+setInterval(checkUpdate,3*60*1000);window.addEventListener('focus',checkUpdate);document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkUpdate()});setTimeout(checkUpdate,4000);
 const _renderTopbarP=renderTopbar;renderTopbar=function(){_renderTopbarP();const r=$('#topbar .tb-r');if(r&&/^https?:$/.test(location.protocol)&&!window.matchMedia('(display-mode: standalone)').matches)r.insertAdjacentHTML('afterbegin',`<button id="installBtn" class="btn sm gold" ${INSTALL_EVT?'':'hidden'} onclick="installApp()">⬇ ثبّت البرنامج على الجهاز</button>`)};
 
 
