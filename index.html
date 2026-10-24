@@ -155,7 +155,8 @@ table.t tr.cancel td{color:#9ca3af;text-decoration:line-through}
   @page{size:A4;margin:9mm}
   .doc{border:0!important}
 }
-@media(max-width:900px){#app{grid-template-columns:1fr}aside{position:static;height:auto}.g4,.g5{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:1fr 1fr}main{padding:14px}}
+#navtog{display:none}
+@media(max-width:900px){#app{grid-template-columns:1fr}aside{position:sticky;top:0;z-index:40;height:auto;max-height:100vh;padding:8px 12px}aside .brand{display:flex;align-items:center;justify-content:space-between;padding:4px 0;margin:0;border:0;text-align:right}aside .brand .logo-en{font-size:20px;letter-spacing:4px}aside .brand .logo-sub{display:none}#navtog{display:inline-block;background:var(--gold);color:#fff;border:0;border-radius:9px;padding:8px 14px;font-weight:700;font-size:15px;cursor:pointer}aside:not(.open) a,aside:not(.open) .me{display:none}aside.open{overflow:auto}.g4,.g5{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:1fr 1fr}main{padding:14px}}
 </style>
 </head>
 <body>
@@ -301,9 +302,9 @@ function doLogin(){const lk=loginLock();if(lk>0)return toast(`محاولات غ�
 function logout(){sessionStorage.removeItem('altareq_user');ME=null;showLogin()}
 const NAV=[['dashboard','الرئيسية','◆',0],['sale','فاتورة بيع','＋',0],['purchase','فاتورة شراء','＋',0],['invoices','الفواتير','▤',0],['receipts','التحصيل والدفع','＄',0],['customers','العملاء','◉',0],['suppliers','المستوردين والأصناف','▣',0],['inventory','الجرد والمخزن','▦',0],['returns','المرتجعات','↺',1],['expenses','المصروفات والمسحوبات','▼',1],['safe','الخزنة','▥',1],['reports','الأرباح والتقارير','▲',1],['log','سجل العمليات','◷',1],['settings','الإعدادات والنسخ','⚙',1]];
 function startApp(){$('#login').hidden=true;$('#app').hidden=false;renderNav();renderTopbar();go('dashboard')}
-function renderNav(){$('#nav').innerHTML=`<div class="brand"><div class="logo-en">${esc(D.settings.brandEn)}</div><div class="logo-sub">${esc(D.settings.brandSub)}</div></div>`+NAV.filter(n=>!n[3]||isAdmin()).map(n=>`<a data-v="${n[0]}" onclick="go('${n[0]}')" class="${n[0]===CUR?'on':''}"><span>${n[2]}</span>${n[1]}</a>`).join('')+`<div class="me">👤 ${esc(ME.name)} <span class="badge ${isAdmin()?'b-navy':'b-amber'}">${isAdmin()?'مدير':'محاسب'}</span><div class="row" style="justify-content:center;margin-top:8px"><button class="btn sm ghost" onclick="lockNow()">🔒 قفل</button><button class="btn sm ghost" onclick="logout()">خروج</button></div></div>`}
+function renderNav(){$('#nav').innerHTML=`<div class="brand"><div><div class="logo-en">${esc(D.settings.brandEn)}</div><div class="logo-sub">${esc(D.settings.brandSub)}</div></div><button id="navtog" onclick="$('#nav').classList.toggle('open')">☰ القايمة</button></div>`+NAV.filter(n=>!n[3]||isAdmin()).map(n=>`<a data-v="${n[0]}" onclick="go('${n[0]}')" class="${n[0]===CUR?'on':''}"><span>${n[2]}</span>${n[1]}</a>`).join('')+`<div class="me">👤 ${esc(ME.name)} <span class="badge ${isAdmin()?'b-navy':'b-amber'}">${isAdmin()?'مدير':'محاسب'}</span><div class="row" style="justify-content:center;margin-top:8px"><button class="btn sm ghost" onclick="lockNow()">🔒 قفل</button><button class="btn sm ghost" onclick="logout()">خروج</button></div></div>`}
 const VIEWS={};
-function go(v){if(!ME)return showLogin();const n=NAV.find(x=>x[0]===v);if(n&&n[3]&&!isAdmin())v='dashboard';CUR=v;$$('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===v));closeModal();VIEWS[v]();}
+function go(v){if(!ME)return showLogin();const nv=$('#nav');if(nv)nv.classList.remove('open');window.scrollTo(0,0);const n=NAV.find(x=>x[0]===v);if(n&&n[3]&&!isAdmin())v='dashboard';CUR=v;$$('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===v));closeModal();VIEWS[v]();}
 
 /* ================= الرئيسية ================= */
 VIEWS.dashboard=function(){
@@ -609,7 +610,7 @@ function showImg(id){const i=item(id);modal(esc(i.name)+' — '+esc(sup(i.suppli
 
 /* ================= الجرد ================= */
 let STK={sup:'',q:'',show:false};
-VIEWS.inventory=function(){view(`<div class="page-head"><h2>الجرد والمخزن</h2><div class="row"><button class="btn gold" onclick="stockQuickModal()">📦 جرد سريع — دخّل البضاعة</button><button class="btn ghost" onclick="printDoc(inventoryDoc())">طباعة الجرد</button></div></div>
+VIEWS.inventory=function(){view(`<div class="page-head"><h2>الجرد والمخزن</h2><div class="row"><button class="btn gold" onclick="go('stocktake')">📋 وضع الجرد</button><button class="btn" onclick="stockQuickModal()">📦 جرد بالسطور</button><button class="btn ghost" onclick="printDoc(inventoryDoc())">طباعة الجرد</button></div></div>
  <div class="card"><div class="grid g4"><label>المستورد<select onchange="STK.sup=this.value;go('inventory')"><option value="">كل المستوردين (الجرد العام)</option>${D.suppliers.map(s=>opt(s.id,s.name,STK.sup)).join('')}</select></label><label>بحث بالصنف أو كود اللون<input value="${esc(STK.q)}" onchange="STK.q=this.value;go('inventory')"></label><label class="chk" style="align-self:end"><input type="checkbox" ${STK.show?'checked':''} onchange="STK.show=this.checked;go('inventory')"> عرض أمتار كل توب</label></div>
  <div class="tw">${inventoryTable(false)}</div></div>`)};
 function inventoryData(){let rs=stock();if(STK.sup)rs=rs.filter(r=>item(r.itemId).supplierId===STK.sup);const q=toEn(STK.q).trim();if(q)rs=rs.filter(r=>item(r.itemId).name.includes(q)||String(r.color)===q);
@@ -1304,8 +1305,62 @@ async function stockQuickSave(){if(!STQ.sup)return toast('اختار المست�
  D.purchases.push(p);const cnt=p.lines.reduce((a,l)=>a+l.meters.length,0);await commit('جرد سريع',`${sup(STQ.sup).name} — ${cnt} توب${added.length?' — أصناف جديدة: '+added.join('، '):''}`);
  toast(`✔ دخل المخزن ${cnt} توب`);$('#sq_txt').value='';stockQuickPrev();go('inventory');stockQuickModal()}
 
+/* ================= وضع الجرد (إدخال بضاعة كتير بسهولة) ================= */
+let ST={sup:'',item:'',color:'',price:'',groups:[]};
+function stLoad(){try{const d=JSON.parse(localStorage.getItem('altareq_stk_draft')||'null');if(d&&Array.isArray(d.groups))ST=Object.assign({sup:'',item:'',color:'',price:'',groups:[]},d)}catch(e){}}
+function stSave(){try{localStorage.setItem('altareq_stk_draft',JSON.stringify(ST))}catch(e){}}
+const stKey=(s,i,c,p)=>s+'|'+normAr(i)+'|'+c+'|'+(num(p)||0);
+function stGroup(){return ST.groups.find(g=>stKey(g.sup,g.item,g.color,g.price)===stKey(ST.sup,ST.item,ST.color,ST.price))}
+function stTotals(gs){return gs.reduce((a,g)=>{const m=g.meters.reduce((x,y)=>x+y,0);a.r+=g.meters.length;a.m+=m;a.v+=m*(num(g.price)||0);return a},{r:0,m:0,v:0})}
+VIEWS.stocktake=function(){stLoad();const its=ST.sup?D.items.filter(i=>i.supplierId===ST.sup):[];const it=its.find(i=>normAr(i.name)===normAr(ST.item));const T=stTotals(ST.groups),cur=stGroup();
+ const big='font-size:20px;padding:12px 14px';
+ view(`<div class="page-head"><h2>📋 وضع الجرد</h2><div class="row"><button class="btn ghost" onclick="stPasteModal()">📥 لصق من إكسل</button><button class="btn ghost" onclick="go('inventory')">رجوع للمخزن</button></div></div>
+ <div class="card"><div class="grid g4">
+  <label>المستورد<select id="st_sup" style="${big}" onchange="ST.sup=this.value;ST.item='';ST.color='';stSave();go('stocktake')"><option value="">اختار المستورد</option>${D.suppliers.map(s=>opt(s.id,s.name,ST.sup)).join('')}</select></label>
+  <label>الصنف<input id="st_item" style="${big}" list="dl_sti" value="${esc(ST.item)}" placeholder="مثلاً همر" onchange="stSetItem(this.value)"></label>
+  <label>كود اللون<input id="st_color" style="${big}" list="dl_stc" inputmode="text" value="${esc(ST.color)}" placeholder="مثلاً 7" onchange="ST.color=toEn(this.value).trim();stSave();stRefresh()" onkeydown="if(event.key==='Enter'){event.preventDefault();$('#st_m').focus()}"></label>
+  <label>سعر شراء المتر <small>(اختياري)</small><input id="st_price" style="${big}" inputmode="decimal" value="${esc(ST.price)}" onchange="ST.price=toEn(this.value).trim();stSave();stRefresh()"></label>
+ </div>
+ <datalist id="dl_sti">${its.map(i=>`<option value="${esc(i.name)}">`).join('')}</datalist><datalist id="dl_stc">${(it&&it.colors||[]).slice().sort(natSort).map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
+ <label class="mt">متراج التوب <small>— اكتب الرقم ودوس Enter أو «أضف». تقدر تكتب كذا توب بينهم مسافة</small><div class="row"><input id="st_m" inputmode="decimal" style="font-size:28px;padding:14px 16px;font-weight:700;flex:1" placeholder="60.5" onkeydown="if(event.key==='Enter'){event.preventDefault();stAdd()}"><button class="btn gold" style="font-size:20px;padding:14px 26px" onclick="stAdd()">أضف</button></div></label>
+ <div id="st_cur"></div>
+ <div class="row mt"><button class="btn ghost" onclick="stUndo()">↶ امسح آخر توب</button><button class="btn ghost" onclick="ST.color='';stSave();go('stocktake');setTimeout(()=>$('#st_color').focus(),50)">لون تاني</button><button class="btn ghost" onclick="ST.item='';ST.color='';ST.price='';stSave();go('stocktake');setTimeout(()=>$('#st_item').focus(),50)">صنف تاني</button></div></div>
+ <div class="kpis"><div class="kpi gold"><span>اتعدّ لحد دلوقتي</span><b>${T.r} توب</b><i>${fmt(T.m)} متر${T.v?' — '+fmt(T.v)+' ج':''}</i></div><div class="kpi"><span>أصناف وألوان</span><b>${ST.groups.length}</b><i>محفوظ على الجهاز ده لحد ما تدخّله المخزن</i></div></div>
+ <div class="card"><h3>اللي اتعدّ</h3><div id="st_list">${stListHtml()}</div>
+ ${ST.groups.length?`<div class="row end mt"><button class="btn danger" onclick="if(confirm('تمسح كل اللي اتعدّ ومادخلش المخزن؟')){ST.groups=[];stSave();go('stocktake')}">مسح المسودة</button><button class="btn gold" style="font-size:17px" onclick="stCommit()">✔ دخّل كل ده المخزن (${T.r} توب)</button></div>`:''}</div>`);
+ stRefresh();setTimeout(()=>{const f=!ST.sup?$('#st_sup'):!ST.item?$('#st_item'):!ST.color?$('#st_color'):$('#st_m');f&&f.focus()},60)};
+function stSetItem(v){ST.item=v.trim();const it=ST.sup&&findItems(ST.item,ST.sup)[0];if(it&&normAr(it.name)===normAr(ST.item)&&num(it.buy)&&!ST.price)ST.price=String(it.buy);ST.color='';stSave();go('stocktake');setTimeout(()=>$('#st_color').focus(),50)}
+function stRefresh(){const el=$('#st_cur');if(!el)return;const g=stGroup();el.innerHTML=ST.sup&&ST.item&&ST.color?`<div class="info mt" style="font-size:15px">بتعد: <b>${esc(sup(ST.sup).name)} ← ${esc(ST.item)} ← لون ${esc(ST.color)}</b>${g?` — ${g.meters.length} توب: ${g.meters.map(fmt).join(' • ')}`:''}</div>`:`<div class="note mt">اختار ${!ST.sup?'المستورد':!ST.item?'الصنف':'كود اللون'} الأول</div>`}
+function stAdd(){if(!ST.sup)return toast('اختار المستورد','err');ST.item=($('#st_item').value||'').trim();ST.color=toEn($('#st_color').value).trim();ST.price=toEn($('#st_price').value).trim();
+ if(!ST.item)return toast('اكتب الصنف','err');if(!ST.color)return toast('اكتب كود اللون','err');const ms=parseMeters($('#st_m').value);if(!ms.length)return toast('اكتب متراج التوب','err');
+ let g=stGroup();if(!g){g={sup:ST.sup,item:ST.item,color:ST.color,price:ST.price,meters:[]};ST.groups.push(g)}g.meters.push(...ms);ST.last=stKey(g.sup,g.item,g.color,g.price);stSave();
+ $('#st_m').value='';$('#st_m').focus();stRefresh();$('#st_list').innerHTML=stListHtml();const T=stTotals(ST.groups);const k=$('#view .kpi b');if(k)k.textContent=T.r+' توب';toast('✔ '+ms.map(fmt).join(' + '))}
+function stUndo(){const g=ST.groups.find(x=>stKey(x.sup,x.item,x.color,x.price)===ST.last)||ST.groups[ST.groups.length-1];if(!g||!g.meters.length)return;const m=g.meters.pop();if(!g.meters.length)ST.groups=ST.groups.filter(x=>x!==g);stSave();go('stocktake');toast('اتمسح توب '+fmt(m))}
+function stDelRoll(gi,ri){ST.groups[gi].meters.splice(ri,1);if(!ST.groups[gi].meters.length)ST.groups.splice(gi,1);stSave();go('stocktake')}
+function stListHtml(){if(!ST.groups.length)return '<p class="muted">لسه ما اتعدّش حاجة</p>';const by={};ST.groups.forEach((g,i)=>(by[g.sup]=by[g.sup]||[]).push([g,i]));
+ return Object.keys(by).map(sid=>{const T=stTotals(by[sid].map(x=>x[0]));return `<div style="margin-bottom:12px"><div style="font-weight:800;color:var(--navy);margin-bottom:6px">${esc(sup(sid).name)} — ${T.r} توب، ${fmt(T.m)} م</div><div class="tw"><table class="t"><tr><th>الصنف</th><th>اللون</th><th>التوبات</th><th>الأمتار</th><th>إجمالي</th><th>سعر الشراء</th></tr>${by[sid].map(([g,gi])=>{const m=g.meters.reduce((a,b)=>a+b,0),known=findItems(g.item,g.sup).some(i=>normAr(i.name)===normAr(g.item));return `<tr><td><b>${esc(g.item)}</b>${known?'':' <span class="badge b-amber">جديد</span>'}</td><td>${esc(g.color)}</td><td>${g.meters.length}</td><td>${g.meters.map((x,ri)=>`<span class="chip static">${fmt(x)} <span class="x" onclick="stDelRoll(${gi},${ri})">×</span></span>`).join('')}</td><td>${fmt(m)}</td><td>${g.price?fmt(g.price):'—'}</td></tr>`}).join('')}</table></div></div>`}).join('')}
+async function stCommit(){if(!ST.groups.length)return;const T=stTotals(ST.groups);if(!confirm(`هتدخّل ${T.r} توب (${fmt(T.m)} متر) المخزن. الجرد مش بيضيف فلوس على المستوردين. تكمل؟`))return;
+ const now=Date.now(),added=[],by={};ST.groups.forEach(g=>(by[g.sup]=by[g.sup]||[]).push(g));let cnt=0;
+ const miss=Object.keys(by).filter(sid=>!byId(D.suppliers,sid));if(miss.length)return toast('فيه مستورد اتمسح من البرنامج — امسح بضاعته من المسودة الأول','err');
+ for(const sid of Object.keys(by)){const p={id:uid(),no:++D.counters.purchase,supplierId:sid,date:todayLocal(),ref:'جرد',goods:0,shipping:0,shipOnSupplier:false,shipMethod:'',paid:0,method:'cash',note:'جرد — مش عليه فلوس للمستورد',opening:true,lines:[],createdAt:now,by:ME.name};
+  by[sid].forEach(g=>{let it=D.items.find(i=>i.supplierId===sid&&normAr(i.name)===normAr(g.item));const price=num(g.price)||(it?num(it.buy):0);
+   if(!it){it={id:uid(),createdAt:now,supplierId:sid,name:g.item,sell:0,buy:price,colors:[],image:null};D.items.push(it);added.push(g.item)}else if(num(g.price))it.buy=num(g.price);
+   it.colors=it.colors||[];if(!it.colors.includes(g.color))it.colors.push(g.color);p.lines.push({itemId:it.id,color:g.color,price,meters:[...g.meters]});
+   g.meters.forEach(m=>{D.rolls.push({id:uid(),itemId:it.id,color:g.color,meters:m,price,cost:price,purchaseId:p.id,status:'in',saleId:null});cnt++})});D.purchases.push(p)}
+ await commit('جرد',`${cnt} توب — ${Object.keys(by).map(s=>sup(s).name).join('، ')}${added.length?' — أصناف جديدة: '+[...new Set(added)].join('، '):''}`);ST.groups=[];stSave();toast(`✔ دخل المخزن ${cnt} توب`);go('inventory')}
+/* لصق من إكسل */
+function stPasteModal(){modal('📥 لصق الجرد من إكسل',`<p>انسخ من إكسل عواميد بالترتيب ده: <b>المستورد — الصنف — اللون — الأمتار — سعر الشراء</b> (السعر اختياري). كل توب في صف، أو كذا توب في نفس الخانة بينهم مسافة.</p>
+ <code>نجيب سليم ⇥ همر ⇥ 7 ⇥ 60.5 ⇥ 80</code><br><code>نجيب سليم ⇥ همر ⇥ 7 ⇥ 58 61 59</code>
+ <textarea id="sp_txt" rows="10" class="mt" placeholder="الصق هنا"></textarea><div id="sp_msg"></div><div class="row end"><button class="btn gold" onclick="stPasteAdd()">ضيف للمسودة</button></div>`,true);setTimeout(()=>{const x=$('#sp_txt');x&&x.focus()},40)}
+function stPasteAdd(){const lines=String($('#sp_txt').value).split(/\r?\n/).map(l=>l.trim()).filter(Boolean);const bad=[],unk=new Set();let n=0;
+ lines.forEach(l=>{const c=(l.includes('\t')?l.split('\t'):l.split(/\s*[,،;]\s*/)).map(x=>x.trim());if(c.length<4){bad.push(l);return}if(/مستورد|المورد|الصنف/.test(c[0])&&!/\d/.test(c[3]))return;
+  const s=D.suppliers.find(x=>normAr(x.name)===normAr(c[0]));if(!s){unk.add(c[0]);bad.push(l);return}const ms=parseMeters(c[3]);if(!c[1]||!c[2]||!ms.length){bad.push(l);return}
+  const color=toEn(c[2]).trim(),price=c[4]?toEn(c[4]).trim():'';let g=ST.groups.find(x=>stKey(x.sup,x.item,x.color,x.price)===stKey(s.id,c[1],color,price));if(!g){g={sup:s.id,item:c[1],color,price,meters:[]};ST.groups.push(g)}g.meters.push(...ms);n+=ms.length});
+ stSave();$('#sp_msg').innerHTML=(n?`<div class="ok">✔ اتضاف ${n} توب للمسودة</div>`:'')+(unk.size?`<div class="warn">مستوردين مش موجودين في البرنامج: ${[...unk].map(esc).join('، ')} — ضيفهم الأول من «المستوردين والأصناف»</div>`:'')+(bad.length?`<div class="warn">${bad.length} صف مش مفهوم: ${bad.slice(0,5).map(esc).join(' ، ')}</div>`:'');
+ if(n&&!bad.length){setTimeout(()=>{closeModal();go('stocktake')},700)}}
+
 /* ================= تطبيق قابل للتسطيب + تحديث تلقائي ================= */
-const APP_VERSION='202610240435';
+const APP_VERSION='202610240527';
 if(/^https?:$/.test(location.protocol)&&'serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 let INSTALL_EVT=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();INSTALL_EVT=e;const b=$('#installBtn');if(b)b.hidden=false});
 async function installApp(){if(!INSTALL_EVT)return toast('من قايمة المتصفح (⋮) اختار «تثبيت التطبيق» أو Install','err');INSTALL_EVT.prompt();await INSTALL_EVT.userChoice;INSTALL_EVT=null;const b=$('#installBtn');if(b)b.hidden=true}
