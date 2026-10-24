@@ -610,7 +610,7 @@ function showImg(id){const i=item(id);modal(esc(i.name)+' — '+esc(sup(i.suppli
 
 /* ================= الجرد ================= */
 let STK={sup:'',q:'',show:false};
-VIEWS.inventory=function(){view(`<div class="page-head"><h2>الجرد والمخزن</h2><div class="row"><button class="btn gold" onclick="go('stocktake')">📋 وضع الجرد</button><button class="btn" onclick="stockQuickModal()">📦 جرد بالسطور</button><button class="btn ghost" onclick="printDoc(inventoryDoc())">طباعة الجرد</button></div></div>
+VIEWS.inventory=function(){view(`<div class="page-head"><h2>الجرد والمخزن</h2><div class="row"><button class="btn gold" onclick="go('stocktake')">📋 وضع الجرد</button><label class="btn" style="flex-direction:row;margin:0">📂 استيراد ملف الجرد<input type="file" accept=".txt,.csv,text/plain,text/csv" style="display:none" onchange="stImportFile(this)"></label>${isAdmin()?'<button class="btn danger" onclick="stWipeModal()">🗑 مسح الجرد</button>':''}<button class="btn" onclick="stockQuickModal()">📦 جرد بالسطور</button><button class="btn ghost" onclick="printDoc(inventoryDoc())">طباعة الجرد</button></div></div>
  <div class="card"><div class="grid g4"><label>المستورد<select onchange="STK.sup=this.value;go('inventory')"><option value="">كل المستوردين (الجرد العام)</option>${D.suppliers.map(s=>opt(s.id,s.name,STK.sup)).join('')}</select></label><label>بحث بالصنف أو كود اللون<input value="${esc(STK.q)}" onchange="STK.q=this.value;go('inventory')"></label><label class="chk" style="align-self:end"><input type="checkbox" ${STK.show?'checked':''} onchange="STK.show=this.checked;go('inventory')"> عرض أمتار كل توب</label></div>
  <div class="tw">${inventoryTable(false)}</div></div>`)};
 function inventoryData(){let rs=stock();if(STK.sup)rs=rs.filter(r=>item(r.itemId).supplierId===STK.sup);const q=toEn(STK.q).trim();if(q)rs=rs.filter(r=>item(r.itemId).name.includes(q)||String(r.color)===q);
@@ -1314,7 +1314,7 @@ function stGroup(){return ST.groups.find(g=>stKey(g.sup,g.item,g.color,g.price)=
 function stTotals(gs){return gs.reduce((a,g)=>{const m=g.meters.reduce((x,y)=>x+y,0);a.r+=g.meters.length;a.m+=m;a.v+=m*(num(g.price)||0);return a},{r:0,m:0,v:0})}
 VIEWS.stocktake=function(){stLoad();const its=ST.sup?D.items.filter(i=>i.supplierId===ST.sup):[];const it=its.find(i=>normAr(i.name)===normAr(ST.item));const T=stTotals(ST.groups),cur=stGroup();
  const big='font-size:20px;padding:12px 14px';
- view(`<div class="page-head"><h2>📋 وضع الجرد</h2><div class="row"><button class="btn ghost" onclick="stPasteModal()">📥 لصق من إكسل</button><button class="btn ghost" onclick="go('inventory')">رجوع للمخزن</button></div></div>
+ view(`<div class="page-head"><h2>📋 وضع الجرد</h2><div class="row"><label class="btn gold" style="flex-direction:row;margin:0">📂 استيراد ملف الجرد<input type="file" accept=".txt,.csv,text/plain,text/csv" style="display:none" onchange="stImportFile(this)"></label><button class="btn ghost" onclick="stPasteModal()">📥 لصق من إكسل</button><button class="btn ghost" onclick="go('inventory')">رجوع للمخزن</button></div></div>
  <div class="card"><div class="grid g4">
   <label>المستورد<select id="st_sup" style="${big}" onchange="ST.sup=this.value;ST.item='';ST.color='';stSave();go('stocktake')"><option value="">اختار المستورد</option>${D.suppliers.map(s=>opt(s.id,s.name,ST.sup)).join('')}</select></label>
   <label>الصنف<input id="st_item" style="${big}" list="dl_sti" value="${esc(ST.item)}" placeholder="مثلاً همر" onchange="stSetItem(this.value)"></label>
@@ -1352,15 +1352,30 @@ async function stCommit(){if(!ST.groups.length)return;const T=stTotals(ST.groups
 function stPasteModal(){modal('📥 لصق الجرد من إكسل',`<p>انسخ من إكسل عواميد بالترتيب ده: <b>المستورد — الصنف — اللون — الأمتار — سعر الشراء</b> (السعر اختياري). كل توب في صف، أو كذا توب في نفس الخانة بينهم مسافة.</p>
  <code>نجيب سليم ⇥ همر ⇥ 7 ⇥ 60.5 ⇥ 80</code><br><code>نجيب سليم ⇥ همر ⇥ 7 ⇥ 58 61 59</code>
  <textarea id="sp_txt" rows="10" class="mt" placeholder="الصق هنا"></textarea><div id="sp_msg"></div><div class="row end"><button class="btn gold" onclick="stPasteAdd()">ضيف للمسودة</button></div>`,true);setTimeout(()=>{const x=$('#sp_txt');x&&x.focus()},40)}
-function stPasteAdd(){const lines=String($('#sp_txt').value).split(/\r?\n/).map(l=>l.trim()).filter(Boolean);const bad=[],unk=new Set();let n=0;
- lines.forEach(l=>{const c=(l.includes('\t')?l.split('\t'):l.split(/\s*[,،;]\s*/)).map(x=>x.trim());if(c.length<4){bad.push(l);return}if(/مستورد|المورد|الصنف/.test(c[0])&&!/\d/.test(c[3]))return;
+function stPasteAdd(){const r=stParseRows($('#sp_txt').value);const {n,bad,unk}=r;
+ $('#sp_msg').innerHTML=stMsg(r);if(n&&!bad.length){setTimeout(()=>{closeModal();go('stocktake')},700)}}
+function stMsg({n,bad,unk}){return (n?`<div class="ok">✔ اتضاف ${n} توب للمسودة</div>`:'')+(unk.size?`<div class="warn">مستوردين مش موجودين في البرنامج: ${[...unk].map(esc).join('، ')} — ضيفهم الأول من «المستوردين والأصناف»</div>`:'')+(bad.length?`<div class="warn">${bad.length} صف مش مفهوم: ${bad.slice(0,5).map(esc).join(' ، ')}</div>`:'')}
+function stParseRows(text){stLoad();const lines=String(text||'').replace(/^\uFEFF/,'').split(/\r?\n/).map(l=>l.trim()).filter(Boolean);const bad=[],unk=new Set();let n=0;
+ lines.forEach(l=>{const c=(l.includes('\t')?l.split('\t'):l.split(/\s*[,،;]\s*/)).map(x=>x.trim().replace(/^"|"$/g,''));if(!c[0]&&/الإجمالي/.test(l))return;if(c.length<4){bad.push(l);return}if(/مستورد|المورد|الصنف/.test(c[0])&&!/\d/.test(c[3]))return;
   const s=D.suppliers.find(x=>normAr(x.name)===normAr(c[0]));if(!s){unk.add(c[0]);bad.push(l);return}const ms=parseMeters(c[3]);if(!c[1]||!c[2]||!ms.length){bad.push(l);return}
   const color=toEn(c[2]).trim(),price=c[4]?toEn(c[4]).trim():'';let g=ST.groups.find(x=>stKey(x.sup,x.item,x.color,x.price)===stKey(s.id,c[1],color,price));if(!g){g={sup:s.id,item:c[1],color,price,meters:[]};ST.groups.push(g)}g.meters.push(...ms);n+=ms.length});
- stSave();$('#sp_msg').innerHTML=(n?`<div class="ok">✔ اتضاف ${n} توب للمسودة</div>`:'')+(unk.size?`<div class="warn">مستوردين مش موجودين في البرنامج: ${[...unk].map(esc).join('، ')} — ضيفهم الأول من «المستوردين والأصناف»</div>`:'')+(bad.length?`<div class="warn">${bad.length} صف مش مفهوم: ${bad.slice(0,5).map(esc).join(' ، ')}</div>`:'');
- if(n&&!bad.length){setTimeout(()=>{closeModal();go('stocktake')},700)}}
+ stSave();return {n,bad,unk}}
+
+
+/* ===== استيراد ملف الجرد + مسح الجرد ===== */
+function stImportFile(inp){const f=inp.files[0];if(!f)return;f.text().then(t=>{const r=stParseRows(t);inp.value='';go('stocktake');if(r.n)toast(`✔ اتضاف ${r.n} توب — راجعهم ودوس «دخّل كل ده المخزن»`);if(r.unk.size||r.bad.length)modal('ملف الجرد',stMsg(r))})}
+function stOpenings(){return live(D.purchases).filter(p=>p.opening).map(p=>{const rs=D.rolls.filter(r=>r.purchaseId===p.id);return {p,rs,sold:rs.filter(r=>r.status!=='in'&&r.status!=='void').length}})}
+function stWipeModal(){if(!isAdmin())return;const L=stOpenings();if(!L.length)return toast('مفيش جرد متسجل','err');const tr=L.reduce((a,x)=>a+x.rs.length,0),ts=L.reduce((a,x)=>a+x.sold,0);
+ modal('🗑 مسح الجرد',`<p>ده بيشيل كل التوبات اللي دخلت بالجرد من المخزن، عشان تدخّل الجرد من جديد على نضيف. الفواتير والعملاء والفلوس مش بيتأثروا.</p>
+ <div class="tw"><table class="t"><tr><th>التاريخ</th><th>المستورد</th><th>توبات</th><th>اتباع منها</th></tr>${L.map(x=>`<tr><td>${fd(x.p.date)}</td><td>${esc(sup(x.p.supplierId).name)}</td><td>${x.rs.length}</td><td class="${x.sold?'red':''}">${x.sold||'—'}</td></tr>`).join('')}<tr class="tot"><td colspan="2">الإجمالي</td><td>${tr}</td><td>${ts||'—'}</td></tr></table></div>
+ ${ts?`<div class="note">فيه ${ts} توب من الجرد اتباع في فواتير. التوبات دي هتفضل في فواتيرها، والباقي بس هو اللي هيتشال من المخزن.</div>`:''}
+ <label style="max-width:360px" class="mt">للتأكيد اكتب كلمة <b>مسح</b><input id="sw_ok"></label><div class="row end"><button class="btn danger" onclick="stWipe()">امسح الجرد</button></div>`,true)}
+async function stWipe(){if($('#sw_ok').value.trim()!=='مسح')return toast('اكتب كلمة مسح للتأكيد','err');const L=stOpenings(),at={by:ME.name,at:new Date().toISOString(),reason:'مسح الجرد'};let n=0,k=0;
+ L.forEach(x=>{x.rs.forEach(r=>{if(r.status==='in'){r.status='void';n++}else k++});if(!x.sold)x.p.cancelled=at});
+ await commit('مسح الجرد',`اتشال ${n} توب من المخزن${k?' — '+k+' توب كانوا اتباعوا فضلوا في فواتيرهم':''}`);closeModal();toast(`✔ اتشال ${n} توب — دلوقتي تقدر تدخّل الجرد من جديد`);go('inventory')}
 
 /* ================= تطبيق قابل للتسطيب + تحديث تلقائي ================= */
-const APP_VERSION='202610240527';
+const APP_VERSION='202610240611';
 if(/^https?:$/.test(location.protocol)&&'serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 let INSTALL_EVT=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();INSTALL_EVT=e;const b=$('#installBtn');if(b)b.hidden=false});
 async function installApp(){if(!INSTALL_EVT)return toast('من قايمة المتصفح (⋮) اختار «تثبيت التطبيق» أو Install','err');INSTALL_EVT.prompt();await INSTALL_EVT.userChoice;INSTALL_EVT=null;const b=$('#installBtn');if(b)b.hidden=true}
