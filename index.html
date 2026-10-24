@@ -292,10 +292,10 @@ function groupRolls(rolls){const g={};rolls.forEach(r=>{const k=r.itemId+'|'+r.c
 function showLogin(msg){LOGIN_MSG=msg||'';$('#app').hidden=true;$('#login').hidden=false;
  const def=D.users.some(u=>(u.username==='admin'&&checkPass(u,'1234'))||(u.username==='user'&&checkPass(u,'1111')));
  $('#login').innerHTML=`<div class="login-box"><div class="logo-en">${esc(D.settings.brandEn)}</div><div class="logo-sub">${esc(D.settings.brandSub)}</div><p class="muted" style="margin:10px 0 18px">${esc(D.settings.companyAr)}</p>${LOGIN_MSG?`<div class="note" style="text-align:right">${esc(LOGIN_MSG)}</div>`:''}
- <label>${Cloud.on?'الإيميل':'اسم المستخدم'}<input id="lg_u" autocomplete="username" ${Cloud.on?'type="email" dir="ltr"':''}></label><label>كلمة السر<input id="lg_p" type="password" onkeydown="if(event.key==='Enter')doLogin()"></label>
+ <label>${Cloud.on?'اسم المستخدم أو الإيميل':'اسم المستخدم'}<input id="lg_u" autocomplete="username" autocapitalize="off" ${Cloud.on?'dir="ltr"':''} value="${esc(Cloud.on?lastLoginName():'')}"></label><label>كلمة السر<input id="lg_p" type="password" onkeydown="if(event.key==='Enter')doLogin()"></label>
  <button class="btn gold" style="width:100%;margin-top:6px" onclick="doLogin()">دخول</button>${!Cloud.on&&!(D.customers.length||D.sales.length||D.suppliers.length||D.purchases.length)?`<div style="margin-top:12px"><a href="#" class="muted" style="font-size:13px" onclick="cloudCfgModal();return false">☁ ربط الجهاز ده بالبرنامج الأونلاين</a></div>`:''}
  ${def&&!Cloud.on?`<div class="note" style="text-align:right">أول مرة: المدير <b>admin</b> / <b>1234</b> — المحاسب <b>user</b> / <b>1111</b><br>غيّرهم من الإعدادات بعد الدخول.</div>`:''}</div>`;
- setTimeout(()=>$('#lg_u')&&$('#lg_u').focus(),50)}
+ setTimeout(()=>{const u=$('#lg_u'),pw=$('#lg_p');if(u&&u.value&&pw)pw.focus();else if(u)u.focus()},50)}
 function doLogin(){const lk=loginLock();if(lk>0)return toast(`محاولات غلط كتير — استنى ${lk} ثانية`,'err');const u=$('#lg_u').value.trim().toLowerCase(),p=$('#lg_p').value;const usr=D.users.find(x=>x.username.toLowerCase()===u&&checkPass(x,p));
  if(!usr){loginFail(u);return toast('اسم المستخدم أو كلمة السر غلط','err')}loginOk();ME=usr;sessionStorage.setItem('altareq_user',usr.id);if(DRAFT_USER&&DRAFT_USER!==usr.id){SALE=null;PUR=null}DRAFT_USER=usr.id;LAST_ACT=Date.now();addLog('تسجيل دخول','',usr);Store.save(D);startApp();
  if(isAdmin()&&D.settings.autoBackup&&(D.sales.length||D.purchases.length||D.customers.length)&&(!D.settings.lastBackup||Date.now()-new Date(D.settings.lastBackup)>20*3600e3))setTimeout(()=>{backupDownload();toast('اتعملت نسخة احتياطية تلقائية لليوم في فولدر التنزيلات (Downloads)')},900)}
@@ -1064,15 +1064,15 @@ function softRefresh(pulled){if(!ME||$('#app').hidden)return;const busy=$('#moda
 const _localSave=Store.save.bind(Store);Store.saveLocal=_localSave;Store.save=async function(d){const ok=await _localSave(d);if(Cloud.on&&ME)Cloud.markDirty();return ok};
 function backupFile(name){try{const b=new Blob([JSON.stringify(D)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove()}catch(e){}}
 function cloudUserFor(email){email=String(email).toLowerCase();let u=D.users.find(x=>String(x.email||'').toLowerCase()===email);if(!u&&!D.users.some(x=>x.email)){u=D.users.find(x=>x.role==='admin');if(u)u.email=email}return u}
-async function cloudLogin(){const lk=loginLock();if(lk>0)return toast(`محاولات غلط كتير — استنى ${lk} ثانية`,'err');const email=$('#lg_u').value.trim().toLowerCase(),p=$('#lg_p').value;if(!email||!p)return toast('اكتب الإيميل وكلمة السر','err');
+async function cloudLogin(){const lk=loginLock();if(lk>0)return toast(`محاولات غلط كتير — استنى ${lk} ثانية`,'err');const typed=$('#lg_u').value.trim().toLowerCase(),p=$('#lg_p').value;if(!typed||!p)return toast('اكتب اسم المستخدم وكلمة السر','err');const email=resolveLogin(typed);if(!email)return toast('أول مرة على الجهاز ده: ادخل بالإيميل كامل مرة واحدة، وبعد كده اسم المستخدم لوحده كفاية','err');
  const btn=$('#login .btn.gold');btn.disabled=true;btn.textContent='بيتصل...';
  try{await Cloud.signIn(email,p);const r=await Cloud.initial();const u=cloudUserFor(email);if(!u){Cloud.signOut();throw Object.assign(new Error('nouser'),{nouser:true})}
   if(!checkPass(u,p)){u.salt=uid();u.hash=sha256(u.salt+p)}cloudEnter(u,'أونلاين');if(r==='uploaded')toast('☁ بيانات الجهاز ده اترفعت أونلاين لأول مرة');else if(r==='merged')toast('☁ اتدمجت تعديلات الجهاز ده مع البيانات الأونلاين');Cloud.setStatus('ok','☁ متزامن')}
  catch(e){btn.disabled=false;btn.textContent='دخول';
-  if(e.net){const u=D.users.find(x=>String(x.email||'').toLowerCase()===email||String(x.username).toLowerCase()===email);if(u&&checkPass(u,p)){cloudEnter(u,'من غير نت');Cloud.setStatus('off','⚠ مش متصل — محفوظ على الجهاز');toast('مفيش نت — شغال على الجهاز، والتعديلات هتترفع لما النت يرجع','err')}else toast('مفيش اتصال بالنت. أول دخول على الجهاز ده محتاج نت.','err');return}
+  if(e.net){const u=D.users.find(x=>String(x.email||'').toLowerCase()===email||String(x.username).toLowerCase()===typed);if(u&&checkPass(u,p)){cloudEnter(u,'من غير نت');Cloud.setStatus('off','⚠ مش متصل — محفوظ على الجهاز');toast('مفيش نت — شغال على الجهاز، والتعديلات هتترفع لما النت يرجع','err')}else toast('مفيش اتصال بالنت. أول دخول على الجهاز ده محتاج نت.','err');return}
   if(e.nouser)return toast('الإيميل ده مش متربط بمستخدم في البرنامج — المدير يكتبه في الإعدادات ← الربط الأونلاين','err');
   if(e.auth){loginFail(email);return toast('الإيميل أو كلمة السر غلط','err')}toast('مشكلة في الاتصال: '+String(e.message).slice(0,120),'err')}}
-function cloudEnter(u,how){loginOk();ME=u;sessionStorage.setItem('altareq_user',u.id);if(DRAFT_USER&&DRAFT_USER!==u.id){SALE=null;PUR=null}DRAFT_USER=u.id;LAST_ACT=Date.now();addLog('تسجيل دخول',how,u);Store.save(D);startApp()}
+function cloudEnter(u,how){loginOk();rememberLogin(u);ME=u;sessionStorage.setItem('altareq_user',u.id);if(DRAFT_USER&&DRAFT_USER!==u.id){SALE=null;PUR=null}DRAFT_USER=u.id;LAST_ACT=Date.now();addLog('تسجيل دخول',how,u);Store.save(D);startApp()}
 const _doLoginLocal=doLogin;doLogin=function(){return Cloud.on?cloudLogin():_doLoginLocal()};
 const _logout=logout;logout=function(){if(Cloud.on){if(Cloud.dirty&&!confirm('فيه تعديلات لسه ما اترفعتش أونلاين (النت مش شغال). لو خرجت هتفضل محفوظة على الجهاز ده وهترتفع أول ما تدخل تاني. تخرج؟'))return;Cloud.signOut()}_logout()};
 function cloudCfgModal(){const c=Cloud.cfg||{};modal('☁ إعداد الاتصال الأونلاين',`<p>اكتب البيانات اللي خدتها من Supabase (Project Settings ← API).</p><label>Project URL<input id="cc_url" dir="ltr" value="${esc(c.url||'')}" placeholder="https://xxxx.supabase.co"></label><label>anon public key<input id="cc_key" dir="ltr" value="${esc(c.key||'')}"></label><div class="row end"><button class="btn gold" onclick="cloudSaveCfg('cc')">اختبار وحفظ</button></div>`)}
@@ -1374,8 +1374,15 @@ async function stWipe(){if($('#sw_ok').value.trim()!=='مسح')return toast('ا�
  L.forEach(x=>{x.rs.forEach(r=>{if(r.status==='in'){r.status='void';n++}else k++});if(!x.sold)x.p.cancelled=at});
  await commit('مسح الجرد',`اتشال ${n} توب من المخزن${k?' — '+k+' توب كانوا اتباعوا فضلوا في فواتيرهم':''}`);closeModal();toast(`✔ اتشال ${n} توب — دلوقتي تقدر تدخّل الجرد من جديد`);go('inventory')}
 
+
+/* ===== الدخول باسم المستخدم بدل الإيميل ===== */
+function loginMap(){try{return JSON.parse(localStorage.getItem('altareq_logins')||'{}')}catch(e){return {}}}
+function resolveLogin(t){if(t.includes('@'))return t;const u=D.users.find(x=>String(x.username).toLowerCase()===t&&x.email);if(u)return String(u.email).toLowerCase();return loginMap()[t]||''}
+function rememberLogin(u){try{const m=loginMap();if(u.email)m[String(u.username).toLowerCase()]=String(u.email).toLowerCase();localStorage.setItem('altareq_logins',JSON.stringify(m));localStorage.setItem('altareq_lastlogin',u.username)}catch(e){}}
+function lastLoginName(){try{return localStorage.getItem('altareq_lastlogin')||''}catch(e){return ''}}
+
 /* ================= تطبيق قابل للتسطيب + تحديث تلقائي ================= */
-const APP_VERSION='202610240611';
+const APP_VERSION='202610240858';
 if(/^https?:$/.test(location.protocol)&&'serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 let INSTALL_EVT=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();INSTALL_EVT=e;const b=$('#installBtn');if(b)b.hidden=false});
 async function installApp(){if(!INSTALL_EVT)return toast('من قايمة المتصفح (⋮) اختار «تثبيت التطبيق» أو Install','err');INSTALL_EVT.prompt();await INSTALL_EVT.userChoice;INSTALL_EVT=null;const b=$('#installBtn');if(b)b.hidden=true}
