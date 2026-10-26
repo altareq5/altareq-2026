@@ -769,10 +769,10 @@ function tabStart(){window.addEventListener('pagehide',()=>{const t=tabRead();if
  setInterval(()=>{if(TAB_BLOCKED)return;const t=tabRead();if(t&&t.id!==TAB_ID&&Date.now()-t.ts<7000){showTabBlock('البرنامج اتفتح في صفحة تانية، فالصفحة دي وقفت عشان البيانات ما تتلخبطش.');return}tabWrite()},2000)}
 function showTabBlock(msg){TAB_BLOCKED=true;closeModal();const el=$('#tabblock');el.hidden=false;el.innerHTML=`<div class="login-box"><div class="logo-en">AL TAREQ</div><p style="margin:18px 0;line-height:1.8">${msg}</p><button class="btn gold" style="width:100%" onclick="tabTake()">اشتغل في الصفحة دي</button><p class="muted" style="font-size:13px;margin-top:12px">الصفحة التانية هتقف لوحدها.</p></div>`}
 function tabTake(){try{sessionStorage.setItem('altareq_take','1');localStorage.setItem('altareq_tab',JSON.stringify({id:'take',ts:Date.now()}))}catch(e){}location.reload()}
-/* نسخ داخلية يومية (آخر 7 أيام) */
+/* نسخ داخلية يومية (آخر 14 يوم) */
 Object.assign(Store,{req(mode,fn){return new Promise(res=>{try{const q=fn(this.db.transaction('kv',mode).objectStore('kv'));q.onsuccess=()=>res(q.result);q.onerror=()=>res(null)}catch(e){res(null)}})},
  keys(){return this.db?this.req('readonly',o=>o.getAllKeys()).then(r=>r||[]):Promise.resolve([])},get(k){return this.req('readonly',o=>o.get(k))},put(k,v){return this.req('readwrite',o=>o.put(v,k))},del(k){return this.req('readwrite',o=>o.delete(k))},
- async snapToday(data){if(!this.db)return;const k='snap_'+todayLocal();const ks=await this.keys();if(ks.includes(k))return;await this.put(k,{at:new Date().toISOString(),data});const sn=ks.filter(x=>String(x).startsWith('snap_')).concat(k).sort();for(const o of sn.slice(0,Math.max(0,sn.length-7)))await this.del(o)}});
+ async snapToday(data){if(!this.db)return;const k='snap_'+todayLocal();const ks=await this.keys();if(ks.includes(k))return;await this.put(k,{at:new Date().toISOString(),data});const sn=ks.filter(x=>String(x).startsWith('snap_')).concat(k).sort();for(const o of sn.slice(0,Math.max(0,sn.length-14)))await this.del(o)}});
 async function renderSnaps(){const el=$('#snaps');if(!el)return;const ks=(await Store.keys()).filter(k=>String(k).startsWith('snap_')).sort().reverse();
  el.innerHTML=ks.length?`<table class="t"><tr><th>اليوم</th><th></th></tr>${ks.map(k=>`<tr><td>${fd(k.slice(5))} <small>(البيانات زي ما كانت أول ما البرنامج اتفتح اليوم ده)</small></td><td><button class="btn sm ghost" onclick="restoreSnap('${k}')">رجّع للنسخة دي</button></td></tr>`).join('')}</table>`:'<p class="muted">لسه مفيش نسخ داخلية</p>'}
 async function restoreSnap(k){if(!confirm('هترجع البيانات لحالتها يوم '+fd(k.slice(5))+'.\nقبل الرجوع هتنزل نسخة احتياطية من البيانات الحالية للأمان.\nمتأكد؟'))return;const sn=await Store.get(k);if(!sn||!sn.data)return toast('النسخة دي مش سليمة','err');
@@ -1661,8 +1661,70 @@ VIEWS.audit=function(){const P=auditRun(),red=P.filter(x=>x.lvl==='red').reduce(
  <div class="note">الصفحة دي بتقرا بس — مش بتغيّر أي حاجة. بتراجع: كل توب هل مكانه صح (مخزن / متباع / مرتجع)، كل فاتورة ومرتجع هل حسابهم مظبوط، رصيد كل عميل ومستورد من طريقتين لازم يطلعوا زي بعض، الخزن، وسجل العمليات.</div>`)};
 NAV.splice(NAV.findIndex(n=>n[0]==='log')+1,0,['audit','مراجعة الحسابات','✚',1]);
 
+
+/* ================= حماية البيانات ================= */
+/* 1) نسخ أونلاين: نسخة كل يوم + نسخة قبل أي مسح أو استرجاع — محفوظة في جدول blobs على Supabase */
+const BK_KEEP_DAYS=45,BK_KEEP_PRE=15;
+const bkCounts=d=>({sales:live(d.sales||[]).length,customers:(d.customers||[]).length,rolls:(d.rolls||[]).length,receipts:live(d.receipts||[]).length,purchases:live(d.purchases||[]).length});
+const BK_LBL={sales:'فاتورة بيع',customers:'عميل',rolls:'توب',receipts:'تحصيل',purchases:'فاتورة شراء'};
+async function cloudSnap(kind,why){if(!Cloud.on||!Cloud.tok)return false;try{const rows=await Cloud.api('app_state?id=eq.main&select=data,version,updated_at');if(!rows||!rows.length)return false;const st=rows[0].data;
+  const now=new Date(),key=kind==='d'?'bk_d_'+todayLocal():'bk_p_'+now.toISOString().replace(/[:.]/g,'-');
+  const meta={at:now.toISOString(),by:ME?ME.name:'',why:why||'',ver:rows[0].version,counts:bkCounts(st)};
+  await Cloud.api('blobs',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:{key,data:JSON.stringify({meta,data:st})}});
+  cloudSnapClean();return true}catch(e){console.warn('cloudSnap',e);return false}}
+async function cloudSnapList(){const rows=await Cloud.api('blobs?select=key&key=like.bk_*&order=key.desc');return (rows||[]).map(r=>r.key)}
+async function cloudSnapClean(){try{const ks=await cloudSnapList(),d=ks.filter(k=>k.startsWith('bk_d_')).sort().reverse(),pp=ks.filter(k=>k.startsWith('bk_p_')).sort().reverse();
+  const old=[...d.slice(BK_KEEP_DAYS),...pp.slice(BK_KEEP_PRE)];if(old.length)await Cloud.api('blobs?key=in.('+old.join(',')+')',{method:'DELETE'})}catch(e){}}
+let BK_DAY_DONE='';
+async function cloudDaily(){const t=todayLocal();if(BK_DAY_DONE===t||!Cloud.on||!Cloud.tok||!ME)return;try{const r=await Cloud.api('blobs?select=key&key=eq.bk_d_'+t);if(r&&r.length){BK_DAY_DONE=t;return}if(await cloudSnap('d','أول فتحة في اليوم'))BK_DAY_DONE=t}catch(e){}}
+const _cloudPoll=Cloud.poll.bind(Cloud);Cloud.poll=async function(){await _cloudPoll();if(this.status==='ok')cloudDaily()};
+/* 2) فرملة: لو بيانات كتير اتمسحت مرة واحدة، البرنامج ميرفعش للأونلاين غير لما تأكد */
+let BK_ALLOW_SHRINK=false,BK_BLOCKED=false;
+function shrinkCheck(base,now){if(!base)return [];const a=bkCounts(base),b=bkCounts(now);return Object.keys(a).filter(k=>a[k]-b[k]>=5&&a[k]-b[k]>=a[k]*0.2).map(k=>({k,from:a[k],to:b[k]}))}
+const _cloudPush=Cloud.push.bind(Cloud);Cloud.push=async function(){if(!this.on||!this.tok||!this.dirty)return _cloudPush();
+ if(!BK_ALLOW_SHRINK){const sh=shrinkCheck(this.base,D);if(sh.length){if(!BK_BLOCKED){BK_BLOCKED=true;shrinkAlert(sh)}this.setStatus('off','⛔ الرفع واقف — راجع التنبيه');return}}
+ BK_BLOCKED=false;await _cloudPush();if(BK_ALLOW_SHRINK&&!this.dirty)BK_ALLOW_SHRINK=false};
+function shrinkAlert(sh){modal('⛔ وقفت الرفع للأونلاين',`<div class="warn" style="line-height:2">البرنامج لاحظ إن بيانات كتير اتشالت مرة واحدة من الجهاز ده:<br>${sh.map(x=>`<b>${BK_LBL[x.k]}</b>: كانوا ${x.from} وبقوا ${x.to}`).join('<br>')}</div>
+ <p>عشان كده <b>موقّف الرفع</b> لحد ما تقول — البيانات اللي على الأونلاين وعلى الأجهزة التانية لسه سليمة.</p>
+ <div class="row end mt"><button class="btn gold" onclick="shrinkUndo()">↩ رجّع البيانات من الأونلاين (أنا معملتش كده)</button>${isAdmin()?'<button class="btn danger" onclick="shrinkOk()">أنا اللي عملت كده عن قصد — ارفع</button>':''}</div>`)}
+async function shrinkOk(){if(!await askAdminPass('عشان ترفع البيانات بعد المسح'))return;await cloudSnap('p','قبل رفع بيانات ممسوح منها كتير');BK_ALLOW_SHRINK=true;BK_BLOCKED=false;closeModal();Cloud.push()}
+async function shrinkUndo(){try{backupFile('AlTareq-قبل-الرجوع-'+todayLocal()+'.json')}catch(e){}try{const rem=await Cloud.fetchRemote();if(!rem)return toast('مقدرتش أجيب البيانات من الأونلاين','err');D=rem.data;migrate();Cloud.dirty=false;await Cloud.setBase(rem.data,rem.ver);await Store.saveLocal(D);if(ME)ME=byId(D.users,ME.id)||ME;BK_BLOCKED=false;closeModal();Cloud.setStatus('ok','☁ متزامن');go(CUR);toast('✔ رجعت البيانات من الأونلاين')}catch(e){toast('مفيش نت — جرّب تاني لما النت يرجع','err')}}
+/* 3) أي عملية بتمسح أو بتبدّل البيانات: لازم كلمة سر المدير + نسخة أونلاين وملف قبلها */
+function askAdminPass(why){return new Promise(res=>{window.__apRes=res;modal('🔒 كلمة سر المدير',`<p>${esc(why||'')}</p><label>كلمة السر<input id="ap_p" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')apOk()"></label><div class="row end mt"><button class="btn ghost" onclick="closeModal();window.__apRes(false)">إلغاء</button><button class="btn gold" onclick="apOk()">تأكيد</button></div>`);setTimeout(()=>{const i=$('#ap_p');if(i)i.focus()},50)})}
+function apOk(){const p=$('#ap_p').value,ok=D.users.some(u=>u.role==='admin'&&checkPass(u,p));if(!ok)return toast('كلمة السر غلط','err');closeModal();window.__apRes(true)}
+async function guardBefore(why){if(!await askAdminPass(why))return false;toast('بعمل نسخة احتياطية الأول...');try{backupFile('AlTareq-قبل-'+why.replace(/[^؀-ۿa-zA-Z0-9 ]/g,'').trim().replace(/\s+/g,'-')+'-'+todayLocal()+'.json')}catch(e){}if(Cloud.on)await cloudSnap('p',why);BK_ALLOW_SHRINK=true;return true}
+const _resetAll=resetAll;resetAll=async function(){if(!await guardBefore('مسح كل البيانات'))return;return _resetAll()};
+const _seedModal=seedModal;seedModal=async function(){if(!await guardBefore('مسح الكل وتحميل البيانات الجاهزة'))return;return _seedModal()};
+const _backupRestore=backupRestore;backupRestore=async function(inp){if(!inp.files[0])return;if(!await guardBefore('استرجاع من ملف')){inp.value='';return}return _backupRestore(inp)};
+const _restoreSnap=restoreSnap;restoreSnap=async function(k){if(!await guardBefore('استرجاع نسخة داخلية'))return;return _restoreSnap(k)};
+const _dayImportUndo=dayImportUndo;dayImportUndo=async function(id){BK_ALLOW_SHRINK=true;return _dayImportUndo(id)};
+async function cloudRestore(key){try{toast('بجيب النسخة...');const r=await Cloud.api('blobs?select=data&key=eq.'+key);if(!r||!r.length)return toast('النسخة مش موجودة','err');const o=JSON.parse(r[0].data);const m=o.meta||{},c=m.counts||bkCounts(o.data);
+  if(!confirm(`هترجع البيانات زي ما كانت ${new Date(m.at).toLocaleString('en-GB')}\n(${c.sales} فاتورة بيع، ${c.customers} عميل، ${c.rolls} توب)\nعلى كل الأجهزة.\n\nقبلها هنزلك ملف ونعمل نسخة أونلاين من البيانات الحالية. تكمل؟`))return;
+  if(!await guardBefore('استرجاع نسخة أونلاين'))return;const data=await Cloud.resolve(o.data);const who=ME.name,mid=ME.id;D=data;migrate();ME=byId(D.users,mid)||D.users.find(u=>u.role==='admin')||D.users[0];sessionStorage.setItem('altareq_user',ME.id);
+  await commit('استرجاع نسخة أونلاين',`نسخة ${new Date(m.at).toLocaleString('en-GB')} — بواسطة ${who}`);startApp();toast('✔ اترجعت البيانات')}catch(e){console.warn(e);toast('مقدرتش أرجّع النسخة — اتأكد من النت','err')}}
+/* 4) فحص أمان قاعدة البيانات */
+async function secCheck(){const el=$('#sec_out');if(!el)return;el.innerHTML='<p class="muted">بفحص...</p>';const base=Cloud.base_url(),k=Cloud.cfg.key,R=[];
+ try{const r=await fetch(base+'/rest/v1/app_state?select=id&limit=1',{headers:{apikey:k}});const j=await r.json().catch(()=>null);R.push(Array.isArray(j)&&j.length?{ok:false,t:'أي حد معاه لينك البرنامج يقدر يقرا البيانات من غير تسجيل دخول!'}:{ok:true,t:'محدش يقدر يقرا البيانات من غير تسجيل دخول'})}catch(e){R.push({ok:null,t:'مقدرتش أفحص القراءة (النت؟)'})}
+ try{const r=await fetch(base+'/rest/v1/blobs?select=key&limit=1',{headers:{apikey:k}});const j=await r.json().catch(()=>null);R.push(Array.isArray(j)&&j.length?{ok:false,t:'الصور والنسخ الاحتياطية الأونلاين مكشوفة من غير تسجيل دخول!'}:{ok:true,t:'الصور والنسخ الأونلاين مقفولة'})}catch(e){}
+ try{const r=await fetch(base+'/auth/v1/settings',{headers:{apikey:k}});const j=await r.json();R.push(j.disable_signup?{ok:true,t:'التسجيل الجديد مقفول — محدش يقدر يعمل حساب لنفسه'}:{ok:false,t:'التسجيل الجديد مفتوح: أي حد يقدر يعمل حساب بإيميله ويدخل على البيانات!',fix:'signup'})}catch(e){R.push({ok:null,t:'مقدرتش أفحص التسجيل'})}
+ try{const ks=await cloudSnapList();R.push(ks.length?{ok:true,t:`فيه ${ks.length} نسخة أونلاين محفوظة`}:{ok:false,t:'لسه مفيش نسخ أونلاين — هتتعمل أول نسخة دلوقتي'});if(!ks.length)cloudDaily()}catch(e){R.push({ok:false,t:'مقدرتش أوصل لجدول النسخ'})}
+ const em=D.users.map(u=>String(u.email||'').trim().toLowerCase()).filter(Boolean),list=em.map(e=>`'${e.replace(/'/g,"''")}'`).join(', ');
+ const sql=`-- يقفل البيانات على الإيميلات دي بس: ${em.join(' و ')}\nalter table app_state enable row level security;\nalter table blobs enable row level security;\ndo $$ declare p record; begin\n  for p in select policyname, tablename from pg_policies where schemaname='public' and tablename in ('app_state','blobs') loop\n    execute format('drop policy %I on %I', p.policyname, p.tablename);\n  end loop;\nend $$;\ncreate policy altareq_only on app_state for all to authenticated\n  using ((auth.jwt()->>'email') in (${list})) with check ((auth.jwt()->>'email') in (${list}));\ncreate policy altareq_only on blobs for all to authenticated\n  using ((auth.jwt()->>'email') in (${list})) with check ((auth.jwt()->>'email') in (${list}));`;
+ el.innerHTML=`<ul style="line-height:2.2;margin:0 0 10px;padding-inline-start:20px">${R.map(x=>`<li>${x.ok===true?'✅':x.ok===false?'❌':'⚠'} ${x.t}</li>`).join('')}</ul>
+ ${R.some(x=>x.fix==='signup')?`<div class="warn" style="line-height:2">اقفل التسجيل من Supabase: <b>Authentication</b> ← <b>Sign In / Providers</b> (أو Settings) ← اقفل <b>Allow new users to sign up</b> ← Save.<br>إنت والمحاسب حساباتكم موجودة ومش هتتأثر.</div>`:''}
+ ${em.length?`<details class="mt"><summary style="cursor:pointer"><b>قفل إضافي (مستحسن):</b> البيانات تفتح للإيميلين بتوعكم بس، حتى لو حد عمل حساب</summary><p class="muted">في Supabase افتح <b>SQL Editor</b> ← New query ← الزق ده ← Run. بعدها دوس «افحص تاني».</p><textarea id="sec_sql" readonly style="width:100%;height:190px;direction:ltr;font-family:monospace;font-size:12px">${esc(sql)}</textarea><button class="btn sm ghost" onclick="navigator.clipboard.writeText($('#sec_sql').value).then(()=>toast('اتنسخ'))">انسخ</button></details>`:'<p class="muted">ضيف إيميلات الدخول للمستخدمين عشان يطلعلك كود القفل الإضافي.</p>'}`}
+async function cloudSnapsRender(){const el=$('#csnaps');if(!el)return;if(!Cloud.on||!Cloud.tok){el.innerHTML='<p class="muted">البرنامج مش متوصل أونلاين</p>';return}
+ try{const ks=await cloudSnapList();el.innerHTML=ks.length?`<div class="tw"><table class="t"><tr><th>النسخة</th><th>نوعها</th><th></th></tr>${ks.slice(0,60).map(k=>{const d=k.startsWith('bk_d_'),t=d?fd(k.slice(5)):new Date(k.slice(5).replace(/T(\d\d)-(\d\d)-(\d\d)-(\d+)Z/,'T$1:$2:$3.$4Z')).toLocaleString('en-GB');return `<tr><td>${t}</td><td>${d?'نسخة اليوم (أول ما اتفتح)':'<span class="badge b-amber">قبل مسح / استرجاع</span>'}</td><td><button class="btn sm ghost" onclick="cloudRestore('${k}')">رجّع للنسخة دي</button></td></tr>`}).join('')}</table></div>`:'<p class="muted">لسه مفيش نسخ — أول نسخة بتتعمل لوحدها النهارده</p>'}catch(e){el.innerHTML='<p class="red">مقدرتش أجيب النسخ</p>'}}
+const _vSetSec=VIEWS.settings;VIEWS.settings=function(){_vSetSec();const h=$('#view .page-head');if(!h)return;
+ h.insertAdjacentHTML('afterend',`<div class="card" style="border:2px solid var(--gold)"><h3>🛡 حماية البيانات</h3>
+ <div class="note" style="line-height:2">البيانات بتتحفظ في <b>5 أماكن</b>: (1) الأونلاين على Supabase، (2) جوه المتصفح على كل جهاز، (3) نسخة داخلية كل يوم على الجهاز (آخر 14 يوم)، (4) <b>نسخة أونلاين كل يوم</b> (آخر ${BK_KEEP_DAYS} يوم) + نسخة قبل أي مسح أو استرجاع، (5) ملف بينزل في Downloads كل يوم — <b>انقله على فلاشة أو جوجل درايف كل أسبوع</b>.<br>
+ ولو حصل مسح لبيانات كتير مرة واحدة، البرنامج <b>بيوقف الرفع للأونلاين</b> لحد ما تأكد بكلمة سر المدير. والمسح والاسترجاع بقوا محتاجين كلمة سر المدير.</div>
+ ${Cloud.on?`<h3 class="mt">فحص الأمان</h3><div id="sec_out"></div><button class="btn sm ghost" onclick="secCheck()">↻ افحص تاني</button>
+ <h3 class="mt">النسخ الأونلاين</h3><div class="row" style="margin-bottom:8px"><button class="btn sm gold" onclick="cloudSnap('p','نسخة يدوية').then(ok=>{toast(ok?'✔ اتعملت نسخة أونلاين':'مقدرتش — اتأكد من النت',ok?'':'err');cloudSnapsRender()})">＋ اعمل نسخة أونلاين دلوقتي</button></div><div id="csnaps"><p class="muted">بجيب النسخ...</p></div>`:''}</div>`);
+ if(Cloud.on){secCheck();cloudSnapsRender()}};
+
 /* ================= تطبيق قابل للتسطيب + تحديث تلقائي ================= */
-const APP_VERSION='202610252350';
+const APP_VERSION='202610270230';
 if(/^https?:$/.test(location.protocol)&&'serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 let INSTALL_EVT=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();INSTALL_EVT=e;const b=$('#installBtn');if(b)b.hidden=false});
 async function installApp(){if(!INSTALL_EVT)return toast('من قايمة المتصفح (⋮) اختار «تثبيت التطبيق» أو Install','err');INSTALL_EVT.prompt();await INSTALL_EVT.userChoice;INSTALL_EVT=null;const b=$('#installBtn');if(b)b.hidden=true}
