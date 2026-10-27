@@ -1368,7 +1368,13 @@ async function payEditSave(coll,id){const r=byId(D[coll],id),isC=coll==='receipt
  await commit(isC?'تعديل تحصيل':'تعديل دفعة لمستورد',`#${r.no} — ${who} — ${ch.join(' • ')}`);toast('✔ اتعدلت الدفعة');go(CUR);isC?showReceipt(id):showSupPay(id)}
 const _showReceipt=showReceipt;showReceipt=function(id){_showReceipt(id);const r=byId(D.receipts,id);if(!r||r.cancelled||!isAdmin())return;const row=$('#modal .row.end');if(row)row.insertAdjacentHTML('afterbegin',`<button class="btn" onclick="payEdit('receipts','${id}')">✏ تعديل (التاريخ / المبلغ)</button>`)};
 const _showSupPay=showSupPay;showSupPay=function(id){_showSupPay(id);const r=byId(D.supPayments,id);if(!r||r.cancelled||!isAdmin())return;const row=$('#modal .row.end');if(row)row.insertAdjacentHTML('afterbegin',`<button class="btn" onclick="payEdit('supPayments','${id}')">✏ تعديل (التاريخ / المبلغ)</button>`)};
-function closingDoc(){const v=$('#view').cloneNode(true);v.querySelectorAll('.page-head,button,input,.kpis').forEach(e=>e.remove());const d=CLOSE_DATE||todayLocal();
+/* ================= دفعات اتسجلت في اليوم ده بتاريخ تاني (مش داخلة في التقفيل) ================= */
+const locDay=t=>{const x=new Date(t);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0')};
+function lateCard(d){const L=live(D.receipts).filter(r=>r.createdAt&&locDay(r.createdAt)===d&&r.date!==d&&!CLOSE_X.has(r.customerId));if(!L.length)return '';
+ return `<div class="card" data-np="1" style="border:1px dashed var(--gold)"><h3>دفعات اتسجلت في اليوم ده بتاريخ تاني — <span class="red">مش داخلة في التقفيل</span></h3><p class="muted" style="margin:0 0 8px">دي بتتحسب في تقفيل اليوم اللي مكتوب عليها. لو تاريخها غلط افتحها وعدّله.</p>
+ <div class="tw"><table class="t"><tr><th>العميل</th><th>البيان</th><th>تاريخها</th><th>الطريقة</th><th>المبلغ</th><th></th></tr>${L.map(r=>`<tr><td><b>${esc(cust(r.customerId).name)}</b></td><td>تحصيل #${r.no}</td><td><b>${fd(r.date)}</b></td><td>${METHODS[r.method]}</td><td>${fmt(r.amount)}</td><td><button class="btn sm ghost" onclick="showReceipt('${r.id}')">فتح / تعديل</button></td></tr>`).join('')}<tr class="sub"><td colspan="4">الإجمالي (مش داخل في تقفيل النهارده)</td><td>${fmt(L.reduce((a,r)=>a+r.amount,0))}</td><td></td></tr></table></div></div>`}
+const _viewClosing2=VIEWS.closing;VIEWS.closing=function(){_viewClosing2();const d=CLOSE_DATE||todayLocal(),h=lateCard(d);if(!h)return;const cards=$$('#view .card');const last=cards[cards.length-1];if(last)last.insertAdjacentHTML('afterend',h);else $('#view').insertAdjacentHTML('beforeend',h)};
+function closingDoc(){const v=$('#view').cloneNode(true);v.querySelectorAll('.page-head,button,input,.kpis,[data-np]').forEach(e=>e.remove());const d=CLOSE_DATE||todayLocal();
  return `<div class="doc">${band()}<div class="inner"><div class="meta"><div><div class="ttl">تقفيل يوم ${DAYS_JS[new Date(d+'T12:00:00').getDay()]}</div><div>التاريخ: <b>${fd(d)}</b></div></div></div>${[...v.querySelectorAll('.card')].map(c=>{const h=c.querySelector('h3');const t=c.querySelector('table');return (h?`<div style="font-weight:800;color:var(--navy);margin:8px 0 6px">${h.textContent}</div>`:'')+(t?t.outerHTML.replace(/class="t"/,''):'')}).join('')}${foot()}</div></div>`}
 /* فاتورة يدوية (من حساب يوم) — عرض وطباعة */
 function manualSaleDoc(s){const c=cust(s.customerId),goods=saleGoods(s),retV=mRetV(s),st=custStatement(c.id),i=st.findIndex(x=>x.ref===s.id),prev=i>0?st[i-1].bal:0,after=balAsOf(c.id,s.date)+live(D.custReturns).filter(r=>r.customerId===c.id&&r.date===s.date).reduce((x,r)=>x+r.value,0);let tm=0,tr=0;
@@ -1710,7 +1716,7 @@ function prevSaleInfo(s){const L=live(D.sales).filter(x=>x.customerId===s.custom
 function lastRow(s){if(s.cancelled)return '';const L=prevSaleInfo(s);return L?`<tr><td>الباقي من آخر فاتورة (#${L.s.no} — ${fd(L.s.date)})</td><td>${fmt(L.bal)}</td></tr>`:''}
 
 /* ================= تطبيق قابل للتسطيب + تحديث تلقائي ================= */
-const APP_VERSION='202610272317';
+const APP_VERSION='202610280050';
 if(/^https?:$/.test(location.protocol)&&'serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 let INSTALL_EVT=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();INSTALL_EVT=e;const b=$('#installBtn');if(b)b.hidden=false});
 async function installApp(){if(!INSTALL_EVT)return toast('من قايمة المتصفح (⋮) اختار «تثبيت التطبيق» أو Install','err');INSTALL_EVT.prompt();await INSTALL_EVT.userChoice;INSTALL_EVT=null;const b=$('#installBtn');if(b)b.hidden=true}
