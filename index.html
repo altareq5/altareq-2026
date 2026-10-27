@@ -157,6 +157,7 @@ table.t tr.cancel td{color:#9ca3af;text-decoration:line-through}
 }
 #navtog{display:none}
 @media(max-width:900px){#app{grid-template-columns:1fr}aside{position:sticky;top:0;z-index:40;height:auto;max-height:100vh;padding:8px 12px}aside .brand{display:flex;align-items:center;justify-content:space-between;padding:4px 0;margin:0;border:0;text-align:right}aside .brand .logo-en{font-size:20px;letter-spacing:4px}aside .brand .logo-sub{display:none}#navtog{display:inline-block;background:var(--gold);color:#fff;border:0;border-radius:9px;padding:8px 14px;font-weight:700;font-size:15px;cursor:pointer}aside:not(.open) a,aside:not(.open) .me{display:none}aside.open{overflow:auto}.g4,.g5{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:1fr 1fr}main{padding:14px}}
+.stdet{font-size:11.5px;color:#4a4a4a;margin-top:3px;line-height:1.7;font-weight:400}.stdet b{color:#111}
 </style>
 </head>
 <body>
@@ -283,7 +284,7 @@ function custStatement(cid){const c=cust(cid),e=[];const op=num(c.opening);
  e.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:a.seq-b.seq);let bal=0;e.forEach(x=>{bal+=x.debit-x.credit;x.bal=bal});return e}
 function supStatement(sid){const s=sup(sid),e=[];const op=num(s.opening);
  if(op)e.push({date:'0000-00-00',seq:0,desc:'رصيد افتتاحي',add:op>0?op:0,sub:op<0?-op:0});
- live(D.purchases).filter(p=>p.supplierId===sid).forEach(p=>{e.push({date:p.date,seq:p.createdAt,desc:`فاتورة شراء #${p.no}${p.ref?' (رقمها عنده '+p.ref+')':''}`,add:purOwed(p),sub:0});if(p.paid>0)e.push({date:p.date,seq:p.createdAt+.1,desc:`دفعة مع الفاتورة #${p.no}`,add:0,sub:p.paid})});
+ live(D.purchases).filter(p=>p.supplierId===sid).forEach(p=>{e.push({date:p.date,seq:p.createdAt,desc:`فاتورة شراء #${p.no}${p.ref?' (رقمها عنده '+p.ref+')':''}`,add:purOwed(p),sub:0,ref:p.id});if(p.paid>0)e.push({date:p.date,seq:p.createdAt+.1,desc:`دفعة مع الفاتورة #${p.no}`,add:0,sub:p.paid})});
  live(D.supPayments).filter(x=>x.supplierId===sid).forEach(x=>{if(x.amount>0)e.push({date:x.date,seq:x.createdAt,desc:`دفعة #${x.no} (${METHODS[x.method]})${x.note?' — '+x.note:''}`,add:0,sub:x.amount,ref:x.id});if(num(x.discount))e.push({date:x.date,seq:(x.createdAt||0)+.01,desc:`خصم من المستورد مع دفعة #${x.no}`,add:0,sub:num(x.discount),ref:x.id+'_d'})});
  live(D.supReturns).filter(x=>x.supplierId===sid).forEach(x=>e.push({date:x.date,seq:x.createdAt,desc:`مرتجع للمستورد #${x.no}${x.purchaseId&&byId(D.purchases,x.purchaseId)?' من فاتورة #'+byId(D.purchases,x.purchaseId).no:x.old?' من الرصيد القديم':''}`,add:0,sub:x.value,ref:x.id}));
  e.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:a.seq-b.seq);let bal=0;e.forEach(x=>{bal+=x.add-x.sub;x.bal=bal});return e}
@@ -1287,6 +1288,22 @@ function waSupStatement(id){const s=sup(id);shareDoc(supStatementDoc(id),`كشف
 const _saveReceipt=saveReceipt;saveReceipt=async function(){const n=D.receipts.length;await _saveReceipt();if(D.receipts.length>n)showReceipt(D.receipts[D.receipts.length-1].id)};
 const _saveSupPay=saveSupPay;saveSupPay=async function(){const n=D.supPayments.length;await _saveSupPay();if(D.supPayments.length>n)showSupPay(D.supPayments[D.supPayments.length-1].id)};
 const _colPaySave=colPaySave;colPaySave=async function(cid){const n=D.receipts.length;await _colPaySave(cid);if(D.receipts.length>n)showReceipt(D.receipts[D.receipts.length-1].id)};
+/* ================= تفاصيل البضاعة جوه كشف الحساب ================= */
+function detLine(name,color,rolls,qty,unit,price){const nm=esc(name)+(color&&!/لون/.test(name)?' لون '+esc(color):'');if(qty)return `${nm} — ${fmt(qty)} ${esc(unit||'')} × ${fmt(price)} = <b>${fmt(qty*price)}</b>`;const m=rolls.reduce((a,b)=>a+b,0);return `${nm} — ${rolls.length} توب (${rolls.map(fmt).join(' • ')}) = ${fmt(m)} م × ${fmt(price)} = <b>${fmt(m*price)}</b>`}
+function detBox(L){return L.length?`<div class="stdet">${L.map(x=>`<div>• ${x}</div>`).join('')}</div>`:''}
+function custStDet(x){let s;if(x.ref&&x.debit&&(s=byId(D.sales,x.ref))){const L=allLines(s).map(l=>detLine(l.name,l.color,l.rolls||[],l.qty,l.unit,l.price));if(s.discount)L.push(`خصم على الفاتورة: <b>${fmt(s.discount)}</b>`);return detBox(L)}
+ if(x.ref&&/_r$/.test(x.ref)&&(s=byId(D.sales,x.ref.slice(0,-2))))return detBox((s.mret||[]).map(r=>detLine(r.name,r.color,(r.rolls||[]).length?r.rolls:[r.meters],0,'',r.price)));
+ const r=x.ref&&byId(D.custReturns,x.ref);if(r)return detBox(custRetRolls(r).map(l=>detLine(l.name,l.color,l.rolls,0,'',l.price)));return ''}
+function supStDet(x){const p=x.ref&&!x.sub&&byId(D.purchases,x.ref);if(p){const L=(p.lines||[]).map(l=>detLine(item(l.itemId).name,l.color,l.meters,0,'',l.price)).concat((p.mlines||[]).map(l=>detLine(l.name,l.color,l.rolls||[],l.qty,l.unit,l.price)));if(p.shipOnSupplier&&p.shipping)L.push(`شحن على المستورد: <b>${fmt(p.shipping)}</b>`);return detBox(L)}
+ const r=x.ref&&byId(D.supReturns,x.ref);if(r)return detBox(supRetRolls(r).map(l=>detLine(l.name,l.color,l.rolls,0,'',l.price)));return ''}
+statementDoc=function(cid){const c=cust(cid),st=custStatement(cid),b=custBalance(cid);
+ return `<div class="doc">${band()}<div class="inner"><div class="meta"><div><div class="ttl">كشف حساب عميل</div><div>تاريخ الطباعة: <b>${fd(todayLocal())}</b></div></div><div class="box"><div>العميل: <b>${esc(c.name)}</b></div>${c.phone?`<div>ت: <span dir="ltr">${esc(c.phone)}</span></div>`:''}<div>الرصيد الحالي: <b>${fmt(b)} ج</b></div></div></div>
+ ${oldDocHtml(c)}<table><tr><th>التاريخ</th><th>البيان</th><th>عليه</th><th>له</th><th>الرصيد</th></tr>${st.map(x=>`<tr><td>${fd(x.date)}</td><td style="text-align:right"><b>${esc(x.desc)}</b>${custStDet(x)}</td><td>${x.debit?fmt(x.debit):''}</td><td>${x.credit?fmt(x.credit):''}</td><td><b>${fmt(x.bal)}</b></td></tr>`).join('')}
+ <tr><td colspan="2"><b>الإجمالي</b></td><td><b>${fmt(st.reduce((a,x)=>a+x.debit,0))}</b></td><td><b>${fmt(st.reduce((a,x)=>a+x.credit,0))}</b></td><td><b>${fmt(b)}</b></td></tr></table>${foot()}</div></div>`};
+supStatementDoc=function(sid){const s=sup(sid),st=supStatement(sid),b=supBalance(sid);
+ return `<div class="doc">${band()}<div class="inner"><div class="meta"><div><div class="ttl">كشف حساب مستورد</div><div>تاريخ الطباعة: <b>${fd(todayLocal())}</b></div></div><div class="box"><div>المستورد: <b>${esc(s.name)}</b></div>${s.phone?`<div>ت: <span dir="ltr">${esc(s.phone)}</span></div>`:''}<div>الرصيد (علينا له): <b>${fmt(b)} ج</b></div></div></div>
+ <table><tr><th>التاريخ</th><th>البيان</th><th>بضاعة (علينا)</th><th>مدفوع / مرتجع</th><th>الرصيد</th></tr>${st.map(x=>`<tr><td>${fd(x.date)}</td><td style="text-align:right"><b>${esc(x.desc)}</b>${supStDet(x)}</td><td>${x.add?fmt(x.add):''}</td><td>${x.sub?fmt(x.sub):''}</td><td><b>${fmt(x.bal)}</b></td></tr>`).join('')}
+ <tr><td colspan="2"><b>الإجمالي</b></td><td><b>${fmt(st.reduce((a,x)=>a+x.add,0))}</b></td><td><b>${fmt(st.reduce((a,x)=>a+x.sub,0))}</b></td><td><b>${fmt(b)}</b></td></tr></table>${foot()}</div></div>`};
 function closingDoc(){const v=$('#view').cloneNode(true);v.querySelectorAll('.page-head,button,input,.kpis').forEach(e=>e.remove());const d=CLOSE_DATE||todayLocal();
  return `<div class="doc">${band()}<div class="inner"><div class="meta"><div><div class="ttl">تقفيل يوم ${DAYS_JS[new Date(d+'T12:00:00').getDay()]}</div><div>التاريخ: <b>${fd(d)}</b></div></div></div>${[...v.querySelectorAll('.card')].map(c=>{const h=c.querySelector('h3');const t=c.querySelector('table');return (h?`<div style="font-weight:800;color:var(--navy);margin:8px 0 6px">${h.textContent}</div>`:'')+(t?t.outerHTML.replace(/class="t"/,''):'')}).join('')}${foot()}</div></div>`}
 /* فاتورة يدوية (من حساب يوم) — عرض وطباعة */
@@ -1629,7 +1646,7 @@ function prevSaleInfo(s){const L=live(D.sales).filter(x=>x.customerId===s.custom
 function lastRow(s){if(s.cancelled)return '';const L=prevSaleInfo(s);return L?`<tr><td>الباقي من آخر فاتورة (#${L.s.no} — ${fd(L.s.date)})</td><td>${fmt(L.bal)}</td></tr>`:''}
 
 /* ================= تطبيق قابل للتسطيب + تحديث تلقائي ================= */
-const APP_VERSION='202610271436';
+const APP_VERSION='202610272048';
 if(/^https?:$/.test(location.protocol)&&'serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 let INSTALL_EVT=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();INSTALL_EVT=e;const b=$('#installBtn');if(b)b.hidden=false});
 async function installApp(){if(!INSTALL_EVT)return toast('من قايمة المتصفح (⋮) اختار «تثبيت التطبيق» أو Install','err');INSTALL_EVT.prompt();await INSTALL_EVT.userChoice;INSTALL_EVT=null;const b=$('#installBtn');if(b)b.hidden=true}
