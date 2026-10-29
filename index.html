@@ -175,6 +175,7 @@ table.t tr.cancel td{color:#9ca3af;text-decoration:line-through}
 .dd-card{padding:18px}
 @media(max-width:700px){.dd-k{grid-template-columns:repeat(2,1fr)}.dd-s{width:100%}.dd-ih .en{font-size:24px}}
 @media print{.dd-page{break-after:page;page-break-after:always}.dd-page:last-child{break-after:auto}.dd .np,.dd button{display:none!important}}
+.rm-in{width:64px;padding:3px 5px;border:0;background:transparent;font-weight:700;text-align:center}.rm-in:focus{background:#fff;outline:1px solid var(--gold)}.fl-in{padding:5px 7px;font-size:13px}
 </style>
 </head>
 <body>
@@ -1830,7 +1831,7 @@ function prevSaleInfo(s){const L=live(D.sales).filter(x=>x.customerId===s.custom
 function lastRow(s){if(s.cancelled)return '';const L=prevSaleInfo(s);return L?`<tr><td>الباقي من آخر فاتورة (#${L.s.no} — ${fd(L.s.date)})</td><td>${fmt(L.bal)}</td></tr>`:''}
 
 /* ================= تطبيق قابل للتسطيب + تحديث تلقائي ================= */
-const APP_VERSION='202610290054';
+const APP_VERSION='202610300136';
 if(/^https?:$/.test(location.protocol)&&'serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 let INSTALL_EVT=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();INSTALL_EVT=e;const b=$('#installBtn');if(b)b.hidden=false});
 async function installApp(){if(!INSTALL_EVT)return toast('من قايمة المتصفح (⋮) اختار «تثبيت التطبيق» أو Install','err');INSTALL_EVT.prompt();await INSTALL_EVT.userChoice;INSTALL_EVT=null;const b=$('#installBtn');if(b)b.hidden=true}
@@ -1843,6 +1844,20 @@ const _renderTopbarP=renderTopbar;renderTopbar=function(){_renderTopbarP();const
 (async function boot(){Cloud.load();if(!tabCheck())return;D=await Store.load();if(!D){D=EMPTY()}migrate();await Store.save(D);Store.snapToday(D);try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
  tabStart();activityStart();if(Cloud.on){await Cloud.loadMeta();setInterval(()=>Cloud.poll(),12000);window.addEventListener('online',()=>Cloud.poll())}
  const sid=sessionStorage.getItem('altareq_user');if(sid&&byId(D.users,sid)){ME=byId(D.users,sid);DRAFT_USER=ME.id;startApp();if(Cloud.on)setTimeout(()=>Cloud.poll(),300)}else showLogin()})();
+
+/* ================= تعديل البنود جوه الفاتورة قبل الحفظ (أمتار / سعر) ================= */
+function saleSetRollM(rid,v){const x=SALE.rolls.find(r=>r.rollId===rid),m=num(v);if(!x)return;if(!(m>0))return saleRenderLines();if(x.origM==null)x.origM=x.meters;x.meters=m;saleRenderLines()}
+function freeSet(i,k,v){const f=SALE.free[i];if(!f)return;if(k==='name'){if(v.trim())f.name=v.trim()}else if(k==='color')f.color=toEn(v).trim();else if(k==='price'){const p=num(v);if(p>0)f.price=p}else if(k==='m'){if(f.qty){const q=num(v);if(q>0)f.qty=q}else{const ms=parseMeters(v);if(ms.length)f.rolls=ms}}saleRenderLines()}
+const _saleRenderLines3=saleRenderLines;saleRenderLines=function(){_saleRenderLines3();const el=$('#s_lines');if(!el)return;
+ el.querySelectorAll('.chip.static').forEach(ch=>{const x=ch.querySelector('.x');const m=(x&&x.getAttribute('onclick')||'').match(/saleRemoveRoll\('([^']+)'\)/);if(!m)return;const r=SALE.rolls.find(z=>z.rollId===m[1]);if(!r)return;
+  ch.innerHTML=`<input class="rm-in" inputmode="decimal" value="${r.meters}" title="عدّل المتراج" onchange="saleSetRollM('${r.rollId}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">${r.origM!=null&&Math.abs(r.origM-r.meters)>1e-9?`<small class="red">كان ${fmt(r.origM)}</small>`:''} <span class="x" title="شيل التوب" onclick="saleRemoveRoll('${r.rollId}')">×</span>`});
+ (SALE.free||[]).forEach((f,i)=>{const btn=el.querySelector(`button[onclick="freeDel(${i})"]`);if(!btn)return;const tr=btn.closest('tr'),td=tr.children;
+  td[0].innerHTML=`<input class="fl-in" value="${esc(f.name)}" onchange="freeSet(${i},'name',this.value)">`;td[1].innerHTML=`<input class="fl-in" style="width:64px" placeholder="—" value="${esc(f.color||'')}" onchange="freeSet(${i},'color',this.value)">`;
+  if(f.qty)td[2].innerHTML=`<input class="fl-in" style="width:70px" inputmode="decimal" value="${f.qty}" onchange="freeSet(${i},'m',this.value)"> ${esc(f.unit||'')}`;else td[3].innerHTML=`<input class="fl-in" style="min-width:170px" value="${f.rolls.join(' ')}" title="أمتار التوبات بينهم مسافة" onchange="freeSet(${i},'m',this.value)">`;
+  td[5].innerHTML=`<input class="fl-in" style="width:80px" inputmode="decimal" value="${f.price}" onchange="freeSet(${i},'price',this.value)">`})};
+const _saleSave3=saleSave;saleSave=async function(p){const ch=(SALE.rolls||[]).filter(r=>r.origM!=null&&Math.abs(r.origM-r.meters)>1e-9),old=ch.map(r=>{const R=byId(D.rolls,r.rollId);return [R,R&&R.meters]});
+ ch.forEach(r=>{const R=byId(D.rolls,r.rollId);if(R)R.meters=r.meters});const n=D.sales.length;await _saleSave3(p);if(D.sales.length===n)old.forEach(([R,m])=>{if(R)R.meters=m});
+ else if(ch.length)await commit('تعديل متراج توب وقت البيع',ch.map(r=>`${item(r.itemId).name} لون ${r.color}: ${fmt(r.origM)} ← ${fmt(r.meters)}`).join(' • '))};
 </script>
 </body>
 </html>
