@@ -1831,7 +1831,7 @@ function prevSaleInfo(s){const L=live(D.sales).filter(x=>x.customerId===s.custom
 function lastRow(s){if(s.cancelled)return '';const L=prevSaleInfo(s);return L?`<tr><td>الباقي من آخر فاتورة (#${L.s.no} — ${fd(L.s.date)})</td><td>${fmt(L.bal)}</td></tr>`:''}
 
 /* ================= تطبيق قابل للتسطيب + تحديث تلقائي ================= */
-const APP_VERSION='202610300136';
+const APP_VERSION='202611011212';
 if(/^https?:$/.test(location.protocol)&&'serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 let INSTALL_EVT=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();INSTALL_EVT=e;const b=$('#installBtn');if(b)b.hidden=false});
 async function installApp(){if(!INSTALL_EVT)return toast('من قايمة المتصفح (⋮) اختار «تثبيت التطبيق» أو Install','err');INSTALL_EVT.prompt();await INSTALL_EVT.userChoice;INSTALL_EVT=null;const b=$('#installBtn');if(b)b.hidden=true}
@@ -1858,6 +1858,43 @@ const _saleRenderLines3=saleRenderLines;saleRenderLines=function(){_saleRenderLi
 const _saleSave3=saleSave;saleSave=async function(p){const ch=(SALE.rolls||[]).filter(r=>r.origM!=null&&Math.abs(r.origM-r.meters)>1e-9),old=ch.map(r=>{const R=byId(D.rolls,r.rollId);return [R,R&&R.meters]});
  ch.forEach(r=>{const R=byId(D.rolls,r.rollId);if(R)R.meters=r.meters});const n=D.sales.length;await _saleSave3(p);if(D.sales.length===n)old.forEach(([R,m])=>{if(R)R.meters=m});
  else if(ch.length)await commit('تعديل متراج توب وقت البيع',ch.map(r=>`${item(r.itemId).name} لون ${r.color}: ${fmt(r.origM)} ← ${fmt(r.meters)}`).join(' • '))};
+/* ================= تبويبات: فتح كذا صفحة مع بعض ================= */
+const TAB_FORMS=new Set(['sale','purchase','receipts','returns','expenses','stocktake']);const TAB_MAX=10;
+let TABS=[];
+function tabVer(){return (D&&D.log?D.log.length:0)}
+function tabName(v){const n=NAV.find(x=>x[0]===v);return n?n:[v,({closing:'تقفيل اليوم',stocktake:'وضع الجرد',collect:'التحصيل',analysis:'التحليل',forecast:'التوقعات'})[v]||v,'📄']}
+function tabsLoad(){try{const a=JSON.parse(localStorage.getItem('altareq_tabs')||'[]');if(Array.isArray(a))return a.filter(v=>{const n=NAV.find(x=>x[0]===v);return VIEWS[v]&&!(n&&n[3]&&!isAdmin())})}catch(e){}return []}
+function tabsSave(){try{localStorage.setItem('altareq_tabs',JSON.stringify(TABS.map(t=>t.v)))}catch(e){}}
+function renderTabs(){let bar=$('#tabbar');if(!bar){$('#view').insertAdjacentHTML('beforebegin','<div id="tabbar"></div>');bar=$('#tabbar')}
+ bar.innerHTML=TABS.map((t,i)=>{const n=tabName(t.v);return `<div class="tb ${t.v===CUR?'on':''}" onclick="tabGo('${t.v}')" onauxclick="if(event.button===1){event.preventDefault();tabClose('${t.v}')}" title="${esc(n[1])}${i<9?' (Alt+'+(i+1)+')':''}"><span class="ti">${n[2]}</span><span class="tt">${esc(n[1])}</span>${TABS.length>1?`<button class="tx" title="قفل الصفحة" onclick="event.stopPropagation();tabClose('${t.v}')">×</button>`:''}</div>`}).join('')+`<button class="tadd" title="افتح صفحة جديدة" onclick="tabAddMenu(this)">＋</button>`;
+ const on=bar.querySelector('.tb.on');on&&on.scrollIntoView({block:'nearest',inline:'nearest'});tabsSave()}
+function tabAddMenu(b){modal('＋ افتح صفحة جديدة',`<div class="tabpick">${NAV.filter(n=>!n[3]||isAdmin()).map(n=>`<button class="btn ${TABS.some(t=>t.v===n[0])?'ghost':''}" onclick="closeModal();tabGo('${n[0]}')"><span>${n[2]}</span> ${esc(n[1])}${TABS.some(t=>t.v===n[0])?' <small class="muted">(مفتوحة)</small>':''}</button>`).join('')}</div>`)}
+function tabStash(){const t=TABS.find(x=>x.v===CUR),el=$('#view');if(!t||!el)return;const f=document.createDocumentFragment();while(el.firstChild)f.appendChild(el.firstChild);t.frag=f;t.scroll=window.scrollY;t.ver=tabVer()}
+const _goTabs=go;
+go=function(v){if(!ME)return _goTabs(v);const n=NAV.find(x=>x[0]===v);if(n&&n[3]&&!isAdmin())v='dashboard';
+ if(!TABS.length){TABS=tabsLoad().map(x=>({v:x}));}
+ if(v===CUR&&TABS.some(t=>t.v===v)&&$('#view').firstChild){_goTabs(v);const t=TABS.find(t=>t.v===v);t.frag=null;t.ver=tabVer();renderTabs();return}
+ if(TABS.some(t=>t.v===CUR)&&CUR!==v)tabStash();
+ let t=TABS.find(x=>x.v===v);
+ if(!t){t={v};const i=TABS.findIndex(x=>x.v===CUR);TABS.splice(i<0?TABS.length:i+1,0,t);
+  while(TABS.length>TAB_MAX){const k=TABS.findIndex(x=>x.v!==v&&x.v!==CUR);if(k<0)break;TABS.splice(k,1)}}
+ if(t.frag&&(TAB_FORMS.has(v)||t.ver===tabVer())){CUR=v;const nv=$('#nav');if(nv)nv.classList.remove('open');$$('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===v));closeModal();$('#view').replaceChildren(t.frag);t.frag=null;renderTabs();window.scrollTo(0,t.scroll||0);return}
+ t.frag=null;_goTabs(v);t.ver=tabVer();renderTabs()};
+function tabGo(v){if(v===CUR)return;go(v)}
+function tabClose(v){const i=TABS.findIndex(t=>t.v===v);if(i<0||TABS.length<2)return;
+ if(TAB_FORMS.has(v)&&v==='sale'&&SALE&&SALE.lines&&SALE.lines.length&&!confirm('فيه فاتورة بيع لسه ما اتحفظتش — تقفل الصفحة؟ (الفاتورة هتفضل محفوظة كمسودة)'))return;
+ TABS.splice(i,1);if(v===CUR){const nx=TABS[Math.min(i,TABS.length-1)];CUR='';go(nx.v)}else renderTabs()}
+document.addEventListener('keydown',e=>{if(!ME||!TABS.length)return;if(e.altKey&&!e.ctrlKey&&/^Digit[1-9]$/.test(e.code)){const t=TABS[+e.code.slice(5)-1];if(t){e.preventDefault();tabGo(t.v)}}
+ else if(e.ctrlKey&&e.altKey&&(e.key==='ArrowLeft'||e.key==='ArrowRight')){const i=TABS.findIndex(t=>t.v===CUR);const j=(i+(e.key==='ArrowLeft'?1:-1)+TABS.length)%TABS.length;e.preventDefault();tabGo(TABS[j].v)}
+ else if(e.altKey&&e.key.toLowerCase()==='w'){e.preventDefault();tabClose(CUR)}});
+(function(){const s=document.createElement('style');s.textContent=`#tabbar{display:flex;gap:6px;align-items:flex-end;overflow-x:auto;margin:0 0 14px;padding:4px 2px 0;border-bottom:2px solid var(--gold,#b8913f);scrollbar-width:thin;position:sticky;top:0;z-index:30;background:var(--bg,#f6f3ec)}
+#tabbar .tb{display:flex;align-items:center;gap:6px;flex:0 0 auto;max-width:200px;padding:8px 12px 9px;border-radius:12px 12px 0 0;background:#e9e3d6;color:#0f1f3a;cursor:pointer;font-weight:700;font-size:14px;border:1px solid #d9cfb9;border-bottom:0;user-select:none}
+#tabbar .tb:hover{background:#efe8da}#tabbar .tb.on{background:#0f1f3a;color:#fff;border-color:#0f1f3a}
+#tabbar .tt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#tabbar .tx{border:0;background:transparent;color:inherit;opacity:.55;font-size:18px;line-height:1;cursor:pointer;padding:0 2px;border-radius:6px}#tabbar .tx:hover{opacity:1;background:#0002}
+#tabbar .tadd{flex:0 0 auto;border:1px dashed #b8913f;background:#fff;color:#b8913f;font-size:20px;font-weight:700;border-radius:10px;width:40px;height:36px;cursor:pointer;margin-bottom:4px}
+.tabpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}.tabpick .btn{justify-content:flex-start}
+@media print{#tabbar{display:none}}@media(max-width:900px){#tabbar .tb{padding:7px 9px;font-size:13px}#tabbar{top:52px}}`;document.head.appendChild(s)})();
 </script>
 </body>
 </html>
