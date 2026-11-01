@@ -1358,14 +1358,18 @@ function saleEditRender(){const el=$('#se_body');if(!el)return;const s=byId(D.sa
  (SED.free.length?`<h3 class="mt">بنود من غير مخزن</h3>`+SED.free.map((f,i)=>`<div class="grid g5"><label>الصنف<input value="${esc(f.name)}" onchange="SED.free[${i}].name=this.value.trim()"></label><label>كود اللون<input value="${esc(f.color||'')}" onchange="SED.free[${i}].color=toEn(this.value).trim()"></label><label>${f.qty?'العدد':'أمتار التوبات'}<input value="${esc(f.txt)}" onchange="SED.free[${i}].txt=this.value;saleEditRender()"></label><label>السعر<input inputmode="decimal" value="${f.price}" onchange="SED.free[${i}].price=num(this.value)||SED.free[${i}].price;saleEditRender()"></label><label class="chk" style="align-self:end"><input type="checkbox" ${f.del?'checked':''} onchange="SED.free[${i}].del=this.checked;saleEditRender()"> امسح البند</label></div>`).join(''):'')+
  `<div class="grid g4 mt"><label>تاريخ الفاتورة<input type="date" value="${SED.date}" onchange="SED.date=this.value||SED.date"></label><label>الخصم<input inputmode="decimal" value="${SED.discount||''}" onchange="SED.discount=num(this.value);saleEditRender()"></label><label>المدفوع مع الفاتورة<input inputmode="decimal" value="${SED.paid||''}" onchange="SED.paid=num(this.value);saleEditRender()"></label><label>اتدفع إزاي<select onchange="SED.method=this.value">${methodOpts(SED.method)}</select></label></div><label>ملاحظات<input value="${esc(SED.note)}" onchange="SED.note=this.value"></label>`+
  (()=>{const g=seGoods(),net=g-SED.discount-retRV(s)-mRetV(s),oldNet=saleNet(s),b=custBalance(s.customerId),nb=b-(oldNet-num(s.paid))+(net-SED.paid);return `<div class="kpis mt"><div class="kpi"><span>صافي الفاتورة قبل</span><b>${fmt(oldNet)}</b></div><div class="kpi gold"><span>صافي الفاتورة بعد التعديل</span><b>${fmt(net)}</b></div><div class="kpi"><span>رصيد العميل دلوقتي</span><b>${fmt(b)}</b></div><div class="kpi red"><span>رصيده بعد التعديل</span><b>${fmt(nb)}</b></div></div>`})()}
-async function saleEditSave(){const s=byId(D.sales,SED.id),ch=[],c=cust(s.customerId),before=saleNet(s);
+async function saleEditSave(){const s=byId(D.sales,SED.id),ch=[],c=cust(s.customerId),before=saleNet(s);SED.add=SED.add||[];
+ if(SED.ad&&(SED.ad.m||'').trim())return toast('فيه أمتار مكتوبة لسه ما اتضافتش — دوس «إضافة التوبات» أو امسحها','err');
+ {const bad=SED.add.filter(a=>{const R=byId(D.rolls,a.rollId);return !R||R.status!=='in'});if(bad.length){SED.add=SED.add.filter(a=>!bad.includes(a));saleEditRender();return toast('فيه توبات اتباعت في فاتورة تانية واتشالت، راجع تاني','err')}}
+ if(SED.free.some(f=>f.isNew&&!f.del&&(!f.name||!(num(f.price)>0)||!(f.qty?num(f.txt)>0:parseMeters(f.txt).length))))return toast('كمّل البند الجديد: الاسم والأمتار (أو العدد) والسعر — أو علّم «امسح البند»','err');
  if(SED.date!==s.date){ch.push(`التاريخ ${fd(s.date)} ← ${fd(SED.date)}`);s.date=SED.date}
  const nr=[];SED.groups.forEach(x=>{const nm=item(x.itemId).name+' لون '+x.color;if(Math.abs(x.price-x.orig)>1e-9)ch.push(`${nm}: السعر ${fmt(x.orig)} ← ${fmt(x.price)}`);
   x.rolls.forEach(r=>{const o=s.rolls.find(z=>z.rollId===r.rollId);const R=byId(D.rolls,r.rollId);
    if(r.del&&!r.locked){if(R){R.status='in';R.saleId=null}ch.push(`${nm}: اتشال توب ${fmt(r.orig)} (رجع المخزن)`);return}
    if(!r.locked&&Math.abs(r.m-r.orig)>1e-9){ch.push(`${nm}: توب ${fmt(r.orig)} ← ${fmt(r.m)}`);if(R)R.meters=r.m}
-   nr.push({...o,meters:r.locked?o.meters:r.m,price:x.price})})});s.rolls=nr;
- const nf=[];SED.free.forEach((f,i)=>{const o=s.mlines[i];if(f.del){ch.push(`اتمسح بند ${o.name}`);return}const q=f.qty?num(f.txt):0,rs=f.qty?[]:parseMeters(f.txt);const n={...o,name:f.name,color:f.color||'',rolls:rs,qty:q,price:f.price};
+   nr.push({...o,meters:r.locked?o.meters:r.m,price:x.price})})});
+ SED.add.forEach(a=>{const R=byId(D.rolls,a.rollId);R.status='sold';R.saleId=s.id;nr.push({...a})});groupRolls(SED.add).forEach(g=>ch.push(`اتضاف ${item(g.itemId).name} لون ${g.color}: ${g.rolls.map(r=>fmt(r.meters)).join('+')} × ${fmt(g.price)}`));s.rolls=nr;
+ const nf=[];SED.free.forEach((f,i)=>{if(f.isNew){if(f.del)return;const q=f.qty?num(f.txt):0,rs=f.qty?[]:parseMeters(f.txt);nf.push(freeLineObj({name:f.name,color:f.color||'',rolls:rs,qty:q,unit:f.qty?'قطعة':'',price:num(f.price)}));ch.push(`اتضاف بند ${f.name}${f.color?' '+f.color:''}: ${q?q+' قطعة':rs.map(fmt).join('+')} × ${fmt(f.price)}`);return}const o=s.mlines[i];if(f.del){ch.push(`اتمسح بند ${o.name}`);return}const q=f.qty?num(f.txt):0,rs=f.qty?[]:parseMeters(f.txt);const n={...o,name:f.name,color:f.color||'',rolls:rs,qty:q,price:f.price};
   const ov=mLineVal(o),nv=mLineVal(n);if(JSON.stringify([o.name,o.color||'',o.rolls,o.qty,o.price])!==JSON.stringify([n.name,n.color,n.rolls,n.qty,n.price])){ch.push(`بند ${o.name}: ${o.qty?o.qty:(o.rolls||[]).map(fmt).join('+')} × ${fmt(o.price)} ← ${n.qty?n.qty:n.rolls.map(fmt).join('+')} × ${fmt(n.price)}`);
    const om=o.qty||mLineM(o),nm=q||mLineM(n);n.cost=om>0?num(o.cost)*nm/om:freeLineObj(n).cost}nf.push(n)});s.mlines=nf;
  if(Math.abs(SED.discount-num(s.discount))>1e-9){ch.push(`الخصم ${fmt(s.discount)} ← ${fmt(SED.discount)}`);s.discount=SED.discount}
@@ -1831,7 +1835,7 @@ function prevSaleInfo(s){const L=live(D.sales).filter(x=>x.customerId===s.custom
 function lastRow(s){if(s.cancelled)return '';const L=prevSaleInfo(s);return L?`<tr><td>الباقي من آخر فاتورة (#${L.s.no} — ${fd(L.s.date)})</td><td>${fmt(L.bal)}</td></tr>`:''}
 
 /* ================= تطبيق قابل للتسطيب + تحديث تلقائي ================= */
-const APP_VERSION='202611011212';
+const APP_VERSION='202611011225';
 if(/^https?:$/.test(location.protocol)&&'serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 let INSTALL_EVT=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();INSTALL_EVT=e;const b=$('#installBtn');if(b)b.hidden=false});
 async function installApp(){if(!INSTALL_EVT)return toast('من قايمة المتصفح (⋮) اختار «تثبيت التطبيق» أو Install','err');INSTALL_EVT.prompt();await INSTALL_EVT.userChoice;INSTALL_EVT=null;const b=$('#installBtn');if(b)b.hidden=true}
@@ -1895,6 +1899,36 @@ document.addEventListener('keydown',e=>{if(!ME||!TABS.length)return;if(e.altKey&
 #tabbar .tadd{flex:0 0 auto;border:1px dashed #b8913f;background:#fff;color:#b8913f;font-size:20px;font-weight:700;border-radius:10px;width:40px;height:36px;cursor:pointer;margin-bottom:4px}
 .tabpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}.tabpick .btn{justify-content:flex-start}
 @media print{#tabbar{display:none}}@media(max-width:900px){#tabbar .tb{padding:7px 9px;font-size:13px}#tabbar{top:52px}}`;document.head.appendChild(s)})();
+/* ================= إضافة أصناف لفاتورة بيع متسجلة ================= */
+const _saleEdit2=saleEdit;saleEdit=function(id){_saleEdit2(id);if(SED&&SED.id===id){SED.add=[];SED.ad={};saleEditRender()}};
+const _seGoods2=seGoods;seGoods=function(){return _seGoods2()+(SED.add||[]).reduce((a,r)=>a+r.meters*r.price,0)};
+function seAddHtml(){const A=SED.add||[],d=SED.ad||{},it=itemByLabel(d.item||''),cols=it?[...new Set(stock().filter(r=>r.itemId===it.id).map(r=>r.color))]:[];
+ const grp=groupRolls(A);
+ return `<div class="card" style="padding:12px;margin:12px 0;border:2px dashed var(--gold)"><h3 style="margin-top:0">➕ إضافة أصناف للفاتورة</h3>
+ <div class="grid g4"><label>الصنف (من المخزن)<input id="se_item" value="${esc(d.item||'')}" placeholder="اكتب اسم الصنف" oninput="SED.ad.item=this.value"></label>
+ <label>كود اللون<input id="se_color" list="dl_secol" value="${esc(d.color||'')}" oninput="SED.ad.color=toEn(this.value).trim()"><datalist id="dl_secol">${cols.map(c=>`<option value="${esc(c)}">`).join('')}</datalist></label>
+ <label>أمتار التوبات <small>(بينهم مسافة)</small><input id="se_m" value="${esc(d.m||'')}" placeholder="60 61.5" oninput="SED.ad.m=this.value" onkeydown="if(event.key==='Enter'){event.preventDefault();seAddRolls()}"></label>
+ <label>سعر المتر<input id="se_price" inputmode="decimal" value="${esc(d.price||'')}" oninput="SED.ad.price=this.value" onkeydown="if(event.key==='Enter'){event.preventDefault();seAddRolls()}"></label></div>
+ ${it&&cols.length?`<div class="muted" style="margin:-4px 0 8px">في المخزن: ${cols.map(c=>{const rs=stock().filter(r=>r.itemId===it.id&&r.color===c&&!A.some(a=>a.rollId===r.id));return rs.length?`<b>لون ${esc(c)}</b>: ${rs.slice(0,12).map(r=>`<a href="#" onclick="seAddOne('${r.id}');return false" title="دوس عشان تضيفه">${fmt(r.meters)}</a>`).join(' ، ')}${rs.length>12?' …':''}`:''}).filter(Boolean).join(' &nbsp;|&nbsp; ')}</div>`:''}
+ <div class="row"><button class="btn gold" onclick="seAddRolls()">إضافة التوبات من المخزن</button><button class="btn ghost" onclick="seAddFreeForm()">＋ بند من غير مخزن (عبك، قطع، بضاعة مش متسجلة)</button></div><div id="se_msg">${d.msg||''}</div>
+ ${grp.length?`<div class="tw mt"><table class="t"><tr><th>الصنف الجديد</th><th>اللون</th><th>التوبات</th><th>السعر</th><th>القيمة</th><th></th></tr>${grp.map(g=>`<tr><td><b>${esc(item(g.itemId).name)}</b></td><td>${esc(g.color)}</td><td>${g.rolls.map(r=>`<span class="badge b-navy" style="margin:1px">${fmt(r.meters)} <a href="#" style="color:var(--red);font-weight:900;text-decoration:none" title="شيل التوب ده" onclick="seAddDel('${r.rollId}');return false">×</a></span>`).join(' ')}</td><td>${fmt(g.price)}</td><td><b>${fmt(g.rolls.reduce((a,r)=>a+r.meters,0)*g.price)}</b></td><td><button class="btn sm danger" onclick="seAddDelGroup('${g.key}')">شيل</button></td></tr>`).join('')}</table></div>`:''}
+ </div>`}
+function seAddOne(rid){const R=byId(D.rolls,rid),p=num(SED.ad.price)||num(item(R.itemId).sell);if(!R||R.status!=='in')return;if(!(p>0))return toast('اكتب سعر المتر الأول','err');if(SED.add.some(a=>a.rollId===rid))return;SED.add.push({rollId:R.id,itemId:R.itemId,color:R.color,meters:R.meters,price:p,cost:R.cost});SED.ad.price=String(p);SED.ad.msg=`<div class="ok">✔ اتضاف توب ${fmt(R.meters)}</div>`;saleEditRender()}
+function seAddRolls(){const d=SED.ad,it=itemByLabel(d.item||'');if(!it)return toast('اختار الصنف من القايمة','err');const list=parseMeters(d.m||'');if(!list.length)return toast('اكتب أمتار التوبات','err');
+ const price=num(d.price)||num(it.sell);if(!(price>0))return toast('اكتب سعر بيع المتر','err');const color=d.color||'';
+ const used=new Set(SED.add.map(a=>a.rollId)),pool=stock().filter(r=>r.itemId===it.id&&!used.has(r.id)&&(!color||String(r.color)===color));const nf=[];let n=0;
+ list.forEach(m=>{const i=pool.findIndex(r=>Math.abs(r.meters-m)<0.001);if(i<0){nf.push(m);return}const r=pool.splice(i,1)[0];SED.add.push({rollId:r.id,itemId:r.itemId,color:r.color,meters:r.meters,price,cost:r.cost});n++});
+ d.price=String(price);d.m=nf.join(' ');d.msg=(n?`<div class="ok">✔ اتضاف ${n} توب</div>`:'')+(nf.length?`<div class="warn">✘ مش لاقي في المخزن توب ${esc(it.name)}${color?' لون '+esc(color):''} بالأمتار دي: ${nf.map(fmt).join(' ، ')} <button class="btn sm" onclick="seNfToFree()">ضيفهم كبند من غير مخزن</button></div>`:'');saleEditRender();setTimeout(()=>{const x=$('#se_m');x&&x.focus()},30)}
+function seNfToFree(){const d=SED.ad,it=itemByLabel(d.item||'');SED.free.push({name:it?it.name:(d.item||''),color:d.color||'',rolls:[],qty:0,unit:'',price:num(d.price),txt:d.m||'',del:false,isNew:true});d.m='';d.msg='<div class="ok">✔ اتضافوا كبند من غير مخزن — تحت في «بنود من غير مخزن»</div>';saleEditRender()}
+function seAddFreeForm(){SED.free.push({name:'',color:'',rolls:[],qty:0,unit:'',price:0,txt:'',del:false,isNew:true});saleEditRender();setTimeout(()=>{const ins=$$('#se_body .se-free input');ins.length&&ins[ins.length-5]&&ins[ins.length-5].focus()},30)}
+function seAddDel(rid){SED.add=SED.add.filter(a=>a.rollId!==rid);saleEditRender()}
+function seAddDelGroup(k){SED.add=SED.add.filter(a=>a.itemId+'|'+a.color+'|'+a.price!==k);saleEditRender()}
+const _seRender2=saleEditRender;saleEditRender=function(){_seRender2();const el=$('#se_body');if(!el||!SED.add)return;
+ /* البنود الجديدة اللي من غير مخزن: خانة "بالعدد" */
+ const hs=[...el.querySelectorAll('.grid.g5')];hs.forEach((g,i)=>{g.classList.add('se-free');const f=SED.free[i];if(f&&f.isNew){g.style.background='#fff8e6';g.style.borderRadius='10px';g.style.padding='6px';const lb=g.children[2];if(lb)lb.firstChild.textContent=f.qty?'العدد':'أمتار التوبات (أو العدد)';
+   g.insertAdjacentHTML('afterend',`<div class="row" style="margin:-4px 0 10px"><label class="chk"><input type="checkbox" ${f.qty?'checked':''} onchange="SED.free[${i}].qty=this.checked?1:0;saleEditRender()"> بالعدد (قطعة) مش بالمتر</label><span class="badge b-amber">بند جديد</span></div>`)}});
+ const kp=el.querySelector('.grid.g4.mt');if(kp)kp.insertAdjacentHTML('beforebegin',seAddHtml());
+ combo('se_item',itemOpts,v=>{SED.ad.item=$('#se_item').value;const it=itemByLabel(SED.ad.item);if(it&&!num(SED.ad.price)&&num(it.sell))SED.ad.price=String(it.sell);SED.ad.msg='';saleEditRender();setTimeout(()=>{const c=$('#se_color');c&&c.focus()},30)})};
 </script>
 </body>
 </html>
