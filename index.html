@@ -742,9 +742,9 @@ function saleDoc(s){if(s.manual||(s.mlines||[]).length||(s.mret||[]).length)retu
  <div class="box"><div>السيد / <b>${esc(c.name)}</b></div>${c.phone?`<div>ت: <span dir="ltr">${esc(c.phone)}</span></div>`:''}${c.address?`<div>${esc(c.address)}</div>`:''}</div></div>
  <table><tr><th>م</th><th>الصنف</th><th>كود اللون</th><th>عدد التوبات</th><th>أمتار التوبات</th><th>إجمالي الأمتار</th><th>سعر المتر</th><th>القيمة</th></tr>
  ${g.map((x,k)=>{const m=x.rolls.reduce((a,r)=>a+r.meters,0);tm+=m;tr+=x.rolls.length;return `<tr><td>${k+1}</td><td><b>${esc(item(x.itemId).name)}</b></td><td>${esc(x.color)}</td><td>${x.rolls.length}</td><td class="ms">${x.rolls.map(r=>fmt(r.meters)).join(' • ')}</td><td>${fmt(m)}</td><td>${fmt(x.price)}</td><td><b>${fmt(m*x.price)}</b></td></tr>`}).join('')}
- <tr><td colspan="3"><b>الإجمالي</b></td><td><b>${tr}</b></td><td></td><td><b>${fmt(tm)}</b></td><td></td><td><b>${fmt(goods)}</b></td></tr></table>
- <div class="totals"><div style="flex:1">${s.note?`<div><b>ملاحظات:</b> ${esc(s.note)}</div>`:''}${retNote(s)}</div>
- <table><tr><td>إجمالي البضاعة</td><td>${fmt(goods)}</td></tr>${s.discount?`<tr><td>الخصم</td><td>${fmt(s.discount)}</td></tr>`:''}<tr class="grand"><td>صافي الفاتورة</td><td>${fmt(invNet(s))}</td></tr><tr><td>المدفوع (${METHODS[s.method]})</td><td>${fmt(s.paid)}</td></tr>${s.cancelled?'':`${lastRow(s)}<tr><td>الرصيد القديم (قبل الفاتورة)</td><td>${fmt(prev)}</td></tr><tr class="grand"><td>الباقي على العميل</td><td>${fmt(after)}</td></tr>`}</table></div>
+ <tr><td colspan="3"><b>الإجمالي</b></td><td><b>${tr}</b></td><td></td><td><b>${fmt(tm)}</b></td><td></td><td><b>${fmt(goods)}</b></td></tr></table>${saleRetTable(s)}
+ <div class="totals"><div style="flex:1">${s.note?`<div><b>ملاحظات:</b> ${esc(s.note)}</div>`:''}</div>
+ <table><tr><td>إجمالي البضاعة</td><td>${fmt(goods)}</td></tr>${s.discount?`<tr><td>الخصم</td><td>${fmt(s.discount)}</td></tr>`:''}${saleRetRows(s)}<tr class="grand"><td>صافي الفاتورة</td><td>${fmt(saleNet(s))}</td></tr><tr><td>المدفوع (${METHODS[s.method]})</td><td>${fmt(s.paid)}</td></tr>${s.cancelled?'':`${lastRow(s)}<tr><td>الرصيد القديم (قبل الفاتورة)</td><td>${fmt(prev)}</td></tr><tr class="grand"><td>الباقي على العميل</td><td>${fmt(after-retRV(s))}</td></tr>`}</table></div>
  <div class="sign"><div>توقيع المستلم</div><div>عن الشركة</div></div>${foot()}</div></div>`}
 function purDoc(p){let tm=0,tr=0;const f=p.goods?p.shipping/p.goods:0;
  return `<div class="doc">${p.cancelled?'<div class="stamp">ملغاة</div>':''}${band()}<div class="inner"><div class="meta"><div><div class="ttl">فاتورة شراء</div><div>رقم: <b>${p.no}</b>${p.ref?` — رقم المستورد: <b>${esc(p.ref)}</b>`:''}</div><div>التاريخ: <b>${fd(p.date)}</b></div></div><div class="box"><div>المستورد: <b>${esc(sup(p.supplierId).name)}</b></div><div>سجّلها: ${esc(p.by||'')}</div></div></div>
@@ -1501,7 +1501,7 @@ function manualSaleDoc(s){const c=cust(s.customerId),goods=saleGoods(s),retV=mRe
  <table><tr><th>م</th><th>الصنف</th><th>عدد التوبات</th><th>أمتار التوبات</th><th>إجمالي الأمتار</th><th>السعر</th><th>القيمة</th></tr>${allLines(s).map((l,k)=>{const m=mLineM(l);tm+=m;tr+=l.qty?0:l.rolls.length;return `<tr><td>${k+1}</td><td><b>${esc(l.name)}</b></td>${l.qty?`<td colspan="3">${l.qty} ${esc(l.unit)}</td>`:`<td>${l.rolls.length}</td><td class="ms">${l.rolls.map(fmt).join(' • ')}</td><td>${fmt(m)}</td>`}<td>${fmt(l.price)}</td><td><b>${fmt(mLineVal(l))}</b></td></tr>`}).join('')}
  <tr><td colspan="2"><b>الإجمالي</b></td><td><b>${tr}</b></td><td></td><td><b>${fmt(tm)}</b></td><td></td><td><b>${fmt(goods)}</b></td></tr></table>
  ${(s.mret||[]).length?`<table><tr><th>مرتجع</th><th>الأمتار</th><th>السعر</th><th>القيمة</th></tr>${s.mret.map(r=>`<tr><td>${esc(r.name)}${r.color?' — لون '+esc(r.color):''}${(r.rolls||[]).length?' <small>('+r.rolls.length+' توب: '+r.rolls.map(fmt).join(' + ')+')</small>':''}</td><td>${fmt(r.meters)}</td><td>${fmt(r.price)}</td><td>${fmt(r.meters*r.price)}</td></tr>`).join('')}</table>`:''}
- <div class="totals"><div style="flex:1">${s.note?'<b>ملاحظات:</b> '+esc(s.note):''}${retNote(s)}</div><table><tr><td>إجمالي البضاعة</td><td>${fmt(goods)}</td></tr>${s.discount?`<tr><td>الخصم</td><td>${fmt(s.discount)}</td></tr>`:''}${retV?`<tr><td>المرتجع</td><td>${fmt(retV)}</td></tr>`:''}<tr class="grand"><td>صافي الفاتورة</td><td>${fmt(invNet(s))}</td></tr>${s.cancelled?'':`${lastRow(s)}<tr><td>الرصيد القديم (قبل الفاتورة)</td><td>${fmt(prev)}</td></tr>${Math.abs(prev+invNet(s)-after)>0.005?`<tr><td>المدفوع في اليوم ده</td><td>${fmt(prev+invNet(s)-after)}</td></tr>`:''}<tr class="grand"><td>الباقي على العميل</td><td>${fmt(after)}</td></tr>`}</table></div>
+ ${saleRetTable(s)}<div class="totals"><div style="flex:1">${s.note?'<b>ملاحظات:</b> '+esc(s.note):''}</div><table><tr><td>إجمالي البضاعة</td><td>${fmt(goods)}</td></tr>${s.discount?`<tr><td>الخصم</td><td>${fmt(s.discount)}</td></tr>`:''}${retV?`<tr><td>المرتجع</td><td>− ${fmt(retV)}</td></tr>`:''}${saleRetRows(s)}<tr class="grand"><td>صافي الفاتورة</td><td>${fmt(saleNet(s))}</td></tr>${s.cancelled?'':`${lastRow(s)}<tr><td>الرصيد القديم (قبل الفاتورة)</td><td>${fmt(prev)}</td></tr>${Math.abs(prev+invNet(s)-after)>0.005?`<tr><td>المدفوع في اليوم ده</td><td>${fmt(prev+invNet(s)-after)}</td></tr>`:''}<tr class="grand"><td>الباقي على العميل</td><td>${fmt(after-retRV(s))}</td></tr>`}</table></div>
  <div class="sign"><div>توقيع المستلم</div><div>عن الشركة</div></div>${foot()}</div></div>`}
 
 /* البيانات الجاهزة مش موجودة في النسخة الأونلاين */
@@ -1835,7 +1835,7 @@ function prevSaleInfo(s){const L=live(D.sales).filter(x=>x.customerId===s.custom
 function lastRow(s){if(s.cancelled)return '';const L=prevSaleInfo(s);return L?`<tr><td>الباقي من آخر فاتورة (#${L.s.no} — ${fd(L.s.date)})</td><td>${fmt(L.bal)}</td></tr>`:''}
 
 /* ================= تطبيق قابل للتسطيب + تحديث تلقائي ================= */
-const APP_VERSION='202611011225';
+const APP_VERSION='202611011606';
 if(/^https?:$/.test(location.protocol)&&'serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 let INSTALL_EVT=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();INSTALL_EVT=e;const b=$('#installBtn');if(b)b.hidden=false});
 async function installApp(){if(!INSTALL_EVT)return toast('من قايمة المتصفح (⋮) اختار «تثبيت التطبيق» أو Install','err');INSTALL_EVT.prompt();await INSTALL_EVT.userChoice;INSTALL_EVT=null;const b=$('#installBtn');if(b)b.hidden=true}
@@ -1929,6 +1929,13 @@ const _seRender2=saleEditRender;saleEditRender=function(){_seRender2();const el=
    g.insertAdjacentHTML('afterend',`<div class="row" style="margin:-4px 0 10px"><label class="chk"><input type="checkbox" ${f.qty?'checked':''} onchange="SED.free[${i}].qty=this.checked?1:0;saleEditRender()"> بالعدد (قطعة) مش بالمتر</label><span class="badge b-amber">بند جديد</span></div>`)}});
  const kp=el.querySelector('.grid.g4.mt');if(kp)kp.insertAdjacentHTML('beforebegin',seAddHtml());
  combo('se_item',itemOpts,v=>{SED.ad.item=$('#se_item').value;const it=itemByLabel(SED.ad.item);if(it&&!num(SED.ad.price)&&num(it.sell))SED.ad.price=String(it.sell);SED.ad.msg='';saleEditRender();setTimeout(()=>{const c=$('#se_color');c&&c.focus()},30)})};
+
+/* ================= المرتجع جوه إجمالي فاتورة البيع ================= */
+function saleRetRows(s){return saleReturns(s.id).map(r=>`<tr class="retrow"><td>مرتجع #${r.no} (${fd(r.date)})</td><td>− ${fmt(r.value)}</td></tr>`).join('')}
+function saleRetTable(s){const R=saleReturns(s.id);if(!R.length)return '';const g={};R.forEach(r=>custRetRolls(r).forEach(l=>{const k=l.name+'|'+(l.color||'')+'|'+l.price;(g[k]=g[k]||{name:l.name,color:l.color||'',price:l.price,rolls:[]}).rolls.push(...(l.rolls||[]))}));
+ let tm=0,tr=0;const v=R.reduce((a,r)=>a+r.value,0);
+ return `<table class="rett"><tr><th colspan="7" style="text-align:right">↺ المرتجع من الفاتورة دي ${R.map(r=>`(مرتجع #${r.no} — ${fd(r.date)})`).join(' ')}</th></tr><tr><th>م</th><th>الصنف</th><th>كود اللون</th><th>عدد التوبات</th><th>أمتار التوبات</th><th>إجمالي الأمتار</th><th>القيمة</th></tr>${Object.values(g).map((x,k)=>{const m=x.rolls.reduce((a,b)=>a+b,0);tm+=m;tr+=x.rolls.length;return `<tr><td>${k+1}</td><td><b>${esc(x.name)}</b></td><td>${esc(x.color)}</td><td>${x.rolls.length}</td><td class="ms">${x.rolls.map(fmt).join(' • ')}</td><td>${fmt(m)}</td><td><b>− ${fmt(m*x.price)}</b> <small>(${fmt(x.price)})</small></td></tr>`}).join('')}<tr><td colspan="3"><b>إجمالي المرتجع</b></td><td><b>${tr}</b></td><td></td><td><b>${fmt(tm)}</b></td><td><b>− ${fmt(v)}</b></td></tr></table>`}
+(function(){const st=document.createElement('style');st.textContent='.doc table.rett{margin-top:10px}.doc table.rett th{background:#7a1f1f!important;color:#fff!important}.doc table.rett td{color:#7a1f1f}.doc tr.retrow td{color:#b42318;font-weight:700}';document.head.appendChild(st)})();
 </script>
 </body>
 </html>
