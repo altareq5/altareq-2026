@@ -1835,7 +1835,7 @@ function prevSaleInfo(s){const L=live(D.sales).filter(x=>x.customerId===s.custom
 function lastRow(s){if(s.cancelled)return '';const L=prevSaleInfo(s);if(!L)return '';const st=custStatement(s.customerId),k=st.findIndex(x=>x.ref===s.id),b=k>0?st[k-1].bal:0;return `<tr><td>الباقي من آخر فاتورة (#${L.s.no} — ${fd(L.s.date)})${Math.abs(b)<0.005?' <small style="color:var(--green)">✔ اتدفعت بالكامل</small>':''}</td><td>${fmt(b)}</td></tr>`}
 
 /* ================= تطبيق قابل للتسطيب + تحديث تلقائي ================= */
-const APP_VERSION='202611011633';
+const APP_VERSION='202611031439';
 if(/^https?:$/.test(location.protocol)&&'serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 let INSTALL_EVT=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();INSTALL_EVT=e;const b=$('#installBtn');if(b)b.hidden=false});
 async function installApp(){if(!INSTALL_EVT)return toast('من قايمة المتصفح (⋮) اختار «تثبيت التطبيق» أو Install','err');INSTALL_EVT.prompt();await INSTALL_EVT.userChoice;INSTALL_EVT=null;const b=$('#installBtn');if(b)b.hidden=true}
@@ -1936,6 +1936,33 @@ function saleRetTable(s){const R=saleReturns(s.id);if(!R.length)return '';const 
  let tm=0,tr=0;const v=R.reduce((a,r)=>a+r.value,0);
  return `<table class="rett"><tr><th colspan="7" style="text-align:right">↺ المرتجع من الفاتورة دي ${R.map(r=>`(مرتجع #${r.no} — ${fd(r.date)})`).join(' ')}</th></tr><tr><th>م</th><th>الصنف</th><th>كود اللون</th><th>عدد التوبات</th><th>أمتار التوبات</th><th>إجمالي الأمتار</th><th>القيمة</th></tr>${Object.values(g).map((x,k)=>{const m=x.rolls.reduce((a,b)=>a+b,0);tm+=m;tr+=x.rolls.length;return `<tr><td>${k+1}</td><td><b>${esc(x.name)}</b></td><td>${esc(x.color)}</td><td>${x.rolls.length}</td><td class="ms">${x.rolls.map(fmt).join(' • ')}</td><td>${fmt(m)}</td><td><b>− ${fmt(m*x.price)}</b> <small>(${fmt(x.price)})</small></td></tr>`}).join('')}<tr><td colspan="3"><b>إجمالي المرتجع</b></td><td><b>${tr}</b></td><td></td><td><b>${fmt(tm)}</b></td><td><b>− ${fmt(v)}</b></td></tr></table>`}
 (function(){const st=document.createElement('style');st.textContent='.doc table.rett{margin-top:10px}.doc table.rett th{background:#7a1f1f!important;color:#fff!important}.doc table.rett td{color:#7a1f1f}.doc tr.retrow td{color:#b42318;font-weight:700}';document.head.appendChild(st)})();
+/* ================= حفظ الفاتورة وإرسالها واتساب على طول ================= */
+function saleWaText(s){const c=cust(s.customerId),st=custStatement(c.id),k=st.findIndex(x=>x.ref===s.id),prev=k>0?st[k-1].bal:0,net=saleNet(s),paid=num(s.paid),after=prev+net-paid;
+ const L=[...groupRolls(s.rolls||[]).map(g=>{const m=g.rolls.reduce((a,r)=>a+r.meters,0);return `▫️ ${item(g.itemId).name} لون ${g.color}: ${g.rolls.length} توب (${g.rolls.map(r=>fmt(r.meters)).join(' + ')}) = ${fmt(m)} م × ${fmt(g.price)} = *${fmt(m*g.price)}*`}),
+  ...(s.mlines||[]).map(l=>`▫️ ${l.name}${l.color?' لون '+l.color:''}: ${l.qty?l.qty+' '+(l.unit||'قطعة'):(l.rolls.length+' توب ('+l.rolls.map(fmt).join(' + ')+') = '+fmt(mLineM(l))+' م')} × ${fmt(l.price)} = *${fmt(mLineVal(l))}*`)];
+ const R=(s.mret||[]).map(r=>`↩️ مرتجع ${r.name}${r.color?' لون '+r.color:''}: ${fmt(r.meters)} م × ${fmt(r.price)} = -${fmt(r.meters*r.price)}`);
+ return [`*${D.settings.companyAr||'شركة الطارق لتجارة الأقمشة'}*`,`🧾 فاتورة بيع رقم *${s.no}* — ${fd(s.date)}`,`السيد/ ${c.name}`,'',...L,...R,'',
+  `إجمالي الفاتورة: *${fmt(saleGoods(s))}* ج`,...(num(s.discount)?[`الخصم: ${fmt(s.discount)} ج`]:[]),...(R.length?[`صافي الفاتورة: *${fmt(net)}* ج`]:[]),
+  `الرصيد القديم: *${fmt(prev)}* ج`,`الإجمالي المطلوب: *${fmt(prev+net)}* ج`,...(paid?[`المدفوع: ${fmt(paid)} ج (${METHODS[s.method]||''})`]:[]),
+  `━━━━━━━━━━`,`💰 *الباقي على حضرتك: ${fmt(after)} ج*`,'',`شكراً لتعاملكم معنا 🤍`].join('\n')}
+function saleWaUrl(s){const c=cust(s.customerId),n=waNum(c.phone);return `https://wa.me/${n}?text=${encodeURIComponent(saleWaText(s))}`}
+async function saleAskPhone(cid){const c=cust(cid);if(waNum(c.phone))return true;const p=prompt(`العميل «${c.name}» ملوش رقم واتساب في البرنامج.\nاكتب رقمه (هيتحفظ عنده):`,'');if(!p||!waNum(p)){toast('من غير رقم مقدرش أفتح الواتساب على العميل','err');return false}c.phone=toEn(p).trim();await commit('تعديل عميل',`${c.name}: إضافة رقم تليفون ${c.phone}`);return true}
+async function saleSaveWa(){if(!SALE||!SALE.customerId)return toast('اختار العميل','err');
+ if(!(await saleAskPhone(SALE.customerId)))return;
+ const n0=D.sales.length;let w=null;try{w=window.open('','_blank')}catch(e){}
+ if(w)try{w.document.write('<p style="font:20px Tahoma;text-align:center;margin-top:40vh" dir="rtl">جاري فتح الواتساب...</p>')}catch(e){}
+ await saleSave(false);
+ if(D.sales.length===n0){if(w)w.close();return}
+ const s=D.sales[D.sales.length-1],url=saleWaUrl(s);
+ if(w&&!w.closed)w.location.href=url;else window.open(url,'_blank');toast('✔ اتحفظت الفاتورة #'+s.no+' — دوس إرسال في الواتساب')}
+async function saleWaQuick(id){const s=byId(D.sales,id);if(!s)return;if(!waNum(cust(s.customerId).phone)){if(!(await saleAskPhone(s.customerId)))return}window.open(saleWaUrl(s),'_blank')}
+/* زرار في صفحة البيع */
+const _vSaleWa=VIEWS.sale;VIEWS.sale=function(){_vSaleWa();saleWaBtn()};
+const _srlWa=saleRenderLines;saleRenderLines=function(){_srlWa.apply(this,arguments);saleWaBtn()};
+function saleWaBtn(){const b=$$('#view button').find(x=>x.getAttribute('onclick')==='saleSave(true)');if(!b||b.parentNode.querySelector('.wa-save'))return;b.insertAdjacentHTML('afterend','<button class="btn wa-save" style="background:#25d366;border-color:#25d366;color:#fff" onclick="saleSaveWa()" title="Ctrl+Shift+Enter">💬 حفظ وإرسال واتساب</button>')}
+document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.shiftKey&&e.key==='Enter'&&CUR==='sale'&&ME){e.preventDefault();e.stopImmediatePropagation();saleSaveWa()}},true);
+/* زرار في عرض الفاتورة */
+const _showSaleWa=showSale;showSale=function(id){_showSaleWa(id);const s=byId(D.sales,id);if(!s||s.cancelled)return;const row=$('#modal .row.end');if(row)row.insertAdjacentHTML('afterbegin',`<button class="btn" style="background:#25d366;border-color:#25d366;color:#fff" onclick="saleWaQuick('${id}')">💬 رسالة واتساب بالحساب</button>`)};
 </script>
 </body>
 </html>
