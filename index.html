@@ -1835,7 +1835,7 @@ function prevSaleInfo(s){const L=live(D.sales).filter(x=>x.customerId===s.custom
 function lastRow(s){if(s.cancelled)return '';const L=prevSaleInfo(s);if(!L)return '';const st=custStatement(s.customerId),k=st.findIndex(x=>x.ref===s.id),b=k>0?st[k-1].bal:0;return `<tr><td>الباقي من آخر فاتورة (#${L.s.no} — ${fd(L.s.date)})${Math.abs(b)<0.005?' <small style="color:var(--green)">✔ اتدفعت بالكامل</small>':''}</td><td>${fmt(b)}</td></tr>`}
 
 /* ================= تطبيق قابل للتسطيب + تحديث تلقائي ================= */
-const APP_VERSION='202611031439';
+const APP_VERSION='202611032114';
 if(/^https?:$/.test(location.protocol)&&'serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 let INSTALL_EVT=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();INSTALL_EVT=e;const b=$('#installBtn');if(b)b.hidden=false});
 async function installApp(){if(!INSTALL_EVT)return toast('من قايمة المتصفح (⋮) اختار «تثبيت التطبيق» أو Install','err');INSTALL_EVT.prompt();await INSTALL_EVT.userChoice;INSTALL_EVT=null;const b=$('#installBtn');if(b)b.hidden=true}
@@ -1963,6 +1963,20 @@ function saleWaBtn(){const b=$$('#view button').find(x=>x.getAttribute('onclick'
 document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.shiftKey&&e.key==='Enter'&&CUR==='sale'&&ME){e.preventDefault();e.stopImmediatePropagation();saleSaveWa()}},true);
 /* زرار في عرض الفاتورة */
 const _showSaleWa=showSale;showSale=function(id){_showSaleWa(id);const s=byId(D.sales,id);if(!s||s.cancelled)return;const row=$('#modal .row.end');if(row)row.insertAdjacentHTML('afterbegin',`<button class="btn" style="background:#25d366;border-color:#25d366;color:#fff" onclick="saleWaQuick('${id}')">💬 رسالة واتساب بالحساب</button>`)};
+/* ================= تقفيل اليوم: الدفعات اللي راحت للمستوردين ================= */
+function daySupOut(d){const L=[...live(D.supPayments).filter(r=>r.date===d&&num(r.amount)>0).map(r=>({id:r.id,kind:'pay',sid:r.supplierId,a:num(r.amount),m:r.method||'cash',note:(r.note||'')+(r.no?` (دفعة #${r.no})`:''),at:r.createdAt||0})),
+  ...live(D.purchases).filter(p=>p.date===d&&num(p.paid)>0).map(p=>({id:p.id,kind:'pur',sid:p.supplierId,a:num(p.paid),m:p.method||'cash',note:`مع فاتورة شراء #${p.no}`,at:p.createdAt||0}))].sort((a,b)=>a.at-b.at);
+ return L.map(x=>({...x,name:sup(x.sid).name,after:supBalance(x.sid)}))}
+const _dayDataSup=dayData;dayData=function(d){const X=_dayDataSup(d);X.SO=daySupOut(d);X.SOc=X.SO.filter(x=>x.m==='cash').reduce((a,x)=>a+x.a,0);X.SOt=X.SO.filter(x=>x.m!=='cash').reduce((a,x)=>a+x.a,0);return X};
+const _ddSummarySup=ddSummary;ddSummary=function(X,inter){let h=_ddSummarySup(X,inter);const SO=X.SO||[];if(!SO.length)return h;const T=X.T,out=X.SOc+X.SOt;
+ h=h.replace('<div class="o"><span>باقي على العملاء</span>',`<div class="r"><span>دفعات للمستوردين</span><b>− ${f2(out)}</b></div><div class="g"><span>صافي النقدية بعد الدفعات</span><b>${f2(T.cash-X.SOc)}</b></div><div class="o"><span>باقي على العملاء</span>`);
+ const tbl=`<div class="tw"><h4 class="dd-st">💸 الفلوس اللي طلعت للمستوردين النهارده</h4><table class="dd-t dd-so"><tr><th>المستورد</th><th>اتدفع إزاي</th><th>المبلغ</th><th>ملاحظة</th><th>الباقي له دلوقتي</th>${inter?'<th class="np"></th>':''}</tr>
+ ${SO.map(x=>`<tr><td class="nm">${esc(x.name)}</td><td>${METHODS[x.m]||x.m}</td><td>${f2(x.a)}</td><td>${esc(x.note)}</td><td>${f2(x.after)}</td>${inter?`<td class="np">${x.kind==='pay'?`<button class="btn sm ghost" onclick="showSupPay('${x.id}')">💵 إيصال</button>`:`<button class="btn sm ghost" onclick="showPur('${x.id}')">فاتورة</button>`}</td>`:''}</tr>`).join('')}
+ <tr class="tot"><td>الإجمالي</td><td>${X.SOc?'نقدي '+f2(X.SOc):''}${X.SOc&&X.SOt?' • ':''}${X.SOt?'تحويل '+f2(X.SOt):''}</td><td>${f2(out)}</td><td></td><td></td>${inter?'<td class="np"></td>':''}</tr></table>
+ <div class="dd-net">💰 النقدية اللي دخلت من العملاء <b>${f2(T.cash)}</b> − اللي اتدفع نقدي للمستوردين <b>${f2(X.SOc)}</b> = <b class="${T.cash-X.SOc<0?'red':''}">${f2(T.cash-X.SOc)}</b> ج${X.SOt?` &nbsp;|&nbsp; التحويلات: دخل <b>${f2(T.tr)}</b> − طلع <b>${f2(X.SOt)}</b> = <b>${f2(T.tr-X.SOt)}</b>`:''}</div></div>`;
+ const i=h.lastIndexOf('</div>');return h.slice(0,i)+tbl+h.slice(i)};
+/* الأيام اللي فيها دفعات بس من غير بيع لازم تظهر برضه */
+(function(){const st=document.createElement('style');st.textContent='.dd-k{grid-template-columns:repeat(auto-fit,minmax(125px,1fr))!important}.dd-k .r b{color:#b42318}.dd-k .g b{color:#067647}.dd-st{margin:16px 0 6px;color:#0f1f3a;font-size:17px}.dd-so th{background:#7a1f1f!important;color:#fff!important}.dd-net{margin:8px 0 4px;padding:10px 14px;background:#f8f4ea;border:1px solid #e6e0d3;border-radius:10px;font-size:15px}';document.head.appendChild(st)})();
 </script>
 </body>
 </html>
