@@ -1835,7 +1835,7 @@ function prevSaleInfo(s){const L=live(D.sales).filter(x=>x.customerId===s.custom
 function lastRow(s){if(s.cancelled)return '';const L=prevSaleInfo(s);if(!L)return '';const st=custStatement(s.customerId),k=st.findIndex(x=>x.ref===s.id),b=k>0?st[k-1].bal:0;return `<tr><td>الباقي من آخر فاتورة (#${L.s.no} — ${fd(L.s.date)})${Math.abs(b)<0.005?' <small style="color:var(--green)">✔ اتدفعت بالكامل</small>':''}</td><td>${fmt(b)}</td></tr>`}
 
 /* ================= تطبيق قابل للتسطيب + تحديث تلقائي ================= */
-const APP_VERSION='202611042109';
+const APP_VERSION='202611042248';
 if(/^https?:$/.test(location.protocol)&&'serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 let INSTALL_EVT=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();INSTALL_EVT=e;const b=$('#installBtn');if(b)b.hidden=false});
 async function installApp(){if(!INSTALL_EVT)return toast('من قايمة المتصفح (⋮) اختار «تثبيت التطبيق» أو Install','err');INSTALL_EVT.prompt();await INSTALL_EVT.userChoice;INSTALL_EVT=null;const b=$('#installBtn');if(b)b.hidden=true}
@@ -2003,6 +2003,10 @@ saleWaQuick=function(id){return waSale(id)};
 colSend=function(cid){const x=colInfo().find(y=>y.c.id===cid);if(!x)return;waImgFast(statementDoc(cid),`كشف حساب - ${x.c.name}`,x.c.phone);colSent()[cid]=Date.now();Store.save(D);setTimeout(()=>{if(CUR==='collect')go('collect')},800)};
 /* أسماء الزراير */
 (function(){const A='💬 حفظ وإرسال واتساب (صورة)',B='💬 ابعت الفاتورة صورة على الواتساب';const fix=()=>{$$('.wa-save').forEach(b=>{if(b.textContent!==A)b.textContent=A});$$('#modal button').forEach(b=>{if(b.textContent.includes('رسالة واتساب بالحساب'))b.textContent=B})};new MutationObserver(fix).observe(document.body,{childList:true,subtree:true})})();
+/* ================= نسخة احتياطية: تتنزل لوحدها + تنبيه لو اتأخرت ================= */
+function bkAge(){const l=D.settings.lastBackup;return l?(Date.now()-new Date(l))/864e5:999}
+const _startAppBk=startApp;startApp=function(){_startAppBk();setTimeout(()=>{if(ME&&isAdmin()&&D.settings.autoBackup&&(D.sales.length||D.customers.length)&&bkAge()>20/24){backupDownload();toast('📦 اتنزلت نسخة احتياطية تلقائية في التنزيلات (Downloads) — ارفعها على Google Drive')}},2500)};
+const _vDashBk=VIEWS.dashboard;VIEWS.dashboard=function(){_vDashBk();if(!isAdmin())return;const a=bkAge();if(a<7)return;const ph=$('#view .page-head');ph&&ph.insertAdjacentHTML('afterend',`<div class="warn" style="font-size:16px">🔴 <b>${a>900?'لسه ما عملتش ولا نسخة احتياطية':'آخر نسخة احتياطية من '+Math.floor(a)+' يوم'}</b> — نزّل نسخة دلوقتي وارفعها على Google Drive عشان حساباتك تفضل في أمان. <button class="btn sm gold" onclick="backupDownload().then(()=>go('dashboard'))">⬇ نزّل نسخة دلوقتي</button></div>`)};
 </script>
 </body>
 </html>
