@@ -1835,7 +1835,7 @@ function prevSaleInfo(s){const L=live(D.sales).filter(x=>x.customerId===s.custom
 function lastRow(s){if(s.cancelled)return '';const L=prevSaleInfo(s);if(!L)return '';const st=custStatement(s.customerId),k=st.findIndex(x=>x.ref===s.id),b=k>0?st[k-1].bal:0;return `<tr><td>الباقي من آخر فاتورة (#${L.s.no} — ${fd(L.s.date)})${Math.abs(b)<0.005?' <small style="color:var(--green)">✔ اتدفعت بالكامل</small>':''}</td><td>${fmt(b)}</td></tr>`}
 
 /* ================= تطبيق قابل للتسطيب + تحديث تلقائي ================= */
-const APP_VERSION='202611032114';
+const APP_VERSION='202611042109';
 if(/^https?:$/.test(location.protocol)&&'serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 let INSTALL_EVT=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();INSTALL_EVT=e;const b=$('#installBtn');if(b)b.hidden=false});
 async function installApp(){if(!INSTALL_EVT)return toast('من قايمة المتصفح (⋮) اختار «تثبيت التطبيق» أو Install','err');INSTALL_EVT.prompt();await INSTALL_EVT.userChoice;INSTALL_EVT=null;const b=$('#installBtn');if(b)b.hidden=true}
@@ -1977,6 +1977,32 @@ const _ddSummarySup=ddSummary;ddSummary=function(X,inter){let h=_ddSummarySup(X,
  const i=h.lastIndexOf('</div>');return h.slice(0,i)+tbl+h.slice(i)};
 /* الأيام اللي فيها دفعات بس من غير بيع لازم تظهر برضه */
 (function(){const st=document.createElement('style');st.textContent='.dd-k{grid-template-columns:repeat(auto-fit,minmax(125px,1fr))!important}.dd-k .r b{color:#b42318}.dd-k .g b{color:#067647}.dd-st{margin:16px 0 6px;color:#0f1f3a;font-size:17px}.dd-so th{background:#7a1f1f!important;color:#fff!important}.dd-net{margin:8px 0 4px;padding:10px 14px;background:#f8f4ea;border:1px solid #e6e0d3;border-radius:10px;font-size:15px}';document.head.appendChild(st)})();
+/* ================= الواتساب بالصورة على طول (مش رسالة نصية) ================= */
+const IS_MOB=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+/* لازم تتنادي من جوه الضغطة نفسها عشان النسخ وفتح الواتساب يشتغلوا */
+function waImgFast(htmlP,name,phone){
+ if(IS_MOB||!(navigator.clipboard&&navigator.clipboard.write&&window.ClipboardItem)){return Promise.resolve(htmlP).then(h=>h&&shareDoc(h,name,phone)).catch(()=>{})}
+ const n=waNum(phone);let w=null;try{w=window.open('','_blank');w&&w.document.write('<p style="font:20px Tahoma;text-align:center;margin-top:40vh" dir="rtl">بجهّز صورة الفاتورة وأفتح الواتساب...</p>')}catch(e){}
+ const busy=modal('📤 إرسال واتساب','<p class="muted">بجهّز الصورة...</p>');
+ const blobP=Promise.resolve(htmlP).then(h=>{if(!h)throw new Error('skip');return docCanvas(h)}).then(c=>canvasBlob(c,'image/png'));
+ return navigator.clipboard.write([new ClipboardItem({'image/png':blobP})]).then(()=>{closeModal();const u=n?`https://wa.me/${n}`:'https://web.whatsapp.com/';if(w&&!w.closed)w.location.href=u;else window.open(u,'_blank');
+   toast(`✔ صورة ${name} اتنسخت — في شات الواتساب دوس Ctrl+V وبعدين إرسال`);if(!n)setTimeout(()=>toast('ملوش رقم في البرنامج — اختار الشات بنفسك','err'),2500)})
+  .catch(async e=>{if(w&&!w.closed)w.close();closeModal();if(String(e&&e.message)==='skip')return;const h=await Promise.resolve(htmlP).catch(()=>null);if(h)shareDoc(h,name,phone)})}
+waSale=function(id){const s=byId(D.sales,id),c=cust(s.customerId);return waImgFast(saleDoc(s),`فاتورة ${s.no} - ${c.name}`,c.phone)};
+waStatement=function(id){const c=cust(id);return waImgFast(statementDoc(id),`كشف حساب - ${c.name}`,c.phone)};
+waReceipt=function(id){const r=byId(D.receipts,id),c=cust(r.customerId);return waImgFast(receiptDoc(r),`إيصال ${r.no} - ${c.name}`,c.phone)};
+waSupPay=function(id){const x=byId(D.supPayments,id),s=sup(x.supplierId);return waImgFast(supPayDoc(x),`دفعة ${x.no} - ${s.name}`,s.phone)};
+/* حفظ الفاتورة وإرسالها صورة */
+saleSaveWa=async function(){if(!SALE||!SALE.customerId)return toast('اختار العميل','err');const c0=cust(SALE.customerId);
+ if(!waNum(c0.phone)){const p=prompt(`العميل «${c0.name}» ملوش رقم واتساب في البرنامج.\nاكتب رقمه (هيتحفظ عنده) — أو سيبه فاضي وتختار الشات بنفسك:`,'');if(p&&waNum(p)){c0.phone=toEn(p).trim();commit('تعديل عميل',`${c0.name}: إضافة رقم تليفون ${c0.phone}`)}}
+ const n0=D.sales.length,cid=SALE.customerId;let nm='';
+ const htmlP=(async()=>{await saleSave(false);if(D.sales.length===n0)return null;const s=D.sales[D.sales.length-1];nm=`فاتورة ${s.no} - ${cust(s.customerId).name}`;return saleDoc(s)})();
+ waImgFast(htmlP,'الفاتورة',cust(cid).phone)};
+saleWaQuick=function(id){return waSale(id)};
+/* التحصيل اليومي: يبعت كشف الحساب صورة */
+colSend=function(cid){const x=colInfo().find(y=>y.c.id===cid);if(!x)return;waImgFast(statementDoc(cid),`كشف حساب - ${x.c.name}`,x.c.phone);colSent()[cid]=Date.now();Store.save(D);setTimeout(()=>{if(CUR==='collect')go('collect')},800)};
+/* أسماء الزراير */
+(function(){const A='💬 حفظ وإرسال واتساب (صورة)',B='💬 ابعت الفاتورة صورة على الواتساب';const fix=()=>{$$('.wa-save').forEach(b=>{if(b.textContent!==A)b.textContent=A});$$('#modal button').forEach(b=>{if(b.textContent.includes('رسالة واتساب بالحساب'))b.textContent=B})};new MutationObserver(fix).observe(document.body,{childList:true,subtree:true})})();
 </script>
 </body>
 </html>
