@@ -1835,7 +1835,7 @@ function prevSaleInfo(s){const L=live(D.sales).filter(x=>x.customerId===s.custom
 function lastRow(s){if(s.cancelled)return '';const L=prevSaleInfo(s);if(!L)return '';const st=custStatement(s.customerId),k=st.findIndex(x=>x.ref===s.id),b=k>0?st[k-1].bal:0;return `<tr><td>الباقي من آخر فاتورة (#${L.s.no} — ${fd(L.s.date)})${Math.abs(b)<0.005?' <small style="color:var(--green)">✔ اتدفعت بالكامل</small>':''}</td><td>${fmt(b)}</td></tr>`}
 
 /* ================= تطبيق قابل للتسطيب + تحديث تلقائي ================= */
-const APP_VERSION='202611042248';
+const APP_VERSION='202611072003';
 if(/^https?:$/.test(location.protocol)&&'serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 let INSTALL_EVT=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();INSTALL_EVT=e;const b=$('#installBtn');if(b)b.hidden=false});
 async function installApp(){if(!INSTALL_EVT)return toast('من قايمة المتصفح (⋮) اختار «تثبيت التطبيق» أو Install','err');INSTALL_EVT.prompt();await INSTALL_EVT.userChoice;INSTALL_EVT=null;const b=$('#installBtn');if(b)b.hidden=true}
@@ -2007,6 +2007,39 @@ colSend=function(cid){const x=colInfo().find(y=>y.c.id===cid);if(!x)return;waImg
 function bkAge(){const l=D.settings.lastBackup;return l?(Date.now()-new Date(l))/864e5:999}
 const _startAppBk=startApp;startApp=function(){_startAppBk();setTimeout(()=>{if(ME&&isAdmin()&&D.settings.autoBackup&&(D.sales.length||D.customers.length)&&bkAge()>20/24){backupDownload();toast('📦 اتنزلت نسخة احتياطية تلقائية في التنزيلات (Downloads) — ارفعها على Google Drive')}},2500)};
 const _vDashBk=VIEWS.dashboard;VIEWS.dashboard=function(){_vDashBk();if(!isAdmin())return;const a=bkAge();if(a<7)return;const ph=$('#view .page-head');ph&&ph.insertAdjacentHTML('afterend',`<div class="warn" style="font-size:16px">🔴 <b>${a>900?'لسه ما عملتش ولا نسخة احتياطية':'آخر نسخة احتياطية من '+Math.floor(a)+' يوم'}</b> — نزّل نسخة دلوقتي وارفعها على Google Drive عشان حساباتك تفضل في أمان. <button class="btn sm gold" onclick="backupDownload().then(()=>go('dashboard'))">⬇ نزّل نسخة دلوقتي</button></div>`)};
+/* ================= استيراد فاتورة بيع من ملف إكسيل ================= */
+function xinvBtn(){const h=$('#view .page-head');if(!h||h.querySelector('.xinv-btn'))return;h.insertAdjacentHTML('beforeend',`<label class="btn xinv-btn" style="flex-direction:row;margin:0">📥 فاتورة من إكسيل<input type="file" accept=".xlsx,.csv,text/csv" style="display:none" onchange="xinvFile(this)"></label>`)}
+const _vSaleX=VIEWS.sale;VIEWS.sale=function(){_vSaleX();xinvBtn()};
+function xinvDate(v){if(v==null||v==='')return '';if(typeof v==='number'&&v>20000&&v<80000){const d=new Date(Date.UTC(1899,11,30)+v*864e5);return d.toISOString().slice(0,10)}
+ const s=toEn(String(v)).trim();let m=s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);if(m)return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+ m=s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/);if(m){const y=m[3].length===2?'20'+m[3]:m[3];return `${y}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`}return ''}
+function xinvMethod(v){const s=normAr(v);if(/انستا|insta/i.test(s))return 'instapay';if(/فودافون|محفظه|كاش|vodafone/i.test(s)&&!/^نقد/.test(s))return 'vodafone';return 'cash'}
+async function xinvFile(inp){const f=inp.files[0];inp.value='';if(!f)return;let rows;try{rows=await fileRows(f)}catch(e){return toast('مقدرتش أقرا الملف — احفظه xlsx أو csv','err')}
+ rows=rows.map(r=>r.map(c=>c==null?'':c));const key=s=>normAr(String(s)).replace(/[:：]/g,'');
+ const kv={};let hi=-1;rows.forEach((r,i)=>{const k=key(r[0]);if(hi<0&&r.some(c=>key(c)==='الصنف'))hi=i;else if(hi<0&&k)kv[k]=r[1]});
+ if(hi<0)return toast('الملف مفيهوش جدول الأصناف (عمود «الصنف»)','err');
+ const H=rows[hi].map(key),ci=n=>H.findIndex(h=>h.includes(n)),cN=ci('الصنف'),cC=ci('اللون'),cM=H.findIndex(h=>h.includes('امتار')||h.includes('المتر')&&!h.includes('سعر')),cQ=ci('العدد'),cP=H.findIndex(h=>h.includes('سعر')||h==='السعر');
+ const lines=[];for(const r of rows.slice(hi+1)){const name=String(r[cN]??'').trim();if(!name||/اجمالي|الاجمالي|total/i.test(normAr(name)))continue;
+  const price=num(toEn(String(r[cP]??''))),ms=cM>=0?parseMeters(String(r[cM]??'')):[],q=cQ>=0?num(toEn(String(r[cQ]??''))):0;if(!(price>0)||(!ms.length&&!q))continue;
+  lines.push({name,color:cC>=0?toEn(String(r[cC]??'')).trim():'',ms,q,price})}
+ if(!lines.length)return toast('مفيش أصناف مفهومة في الملف','err');
+ const cname=String(kv['العميل']??kv['اسم العميل']??'').trim(),c=cname?(custByName(cname)||D.customers.find(x=>normAr(x.name)===normAr(cname))):null;
+ if(SALE&&((SALE.rolls||[]).length||(SALE.free||[]).length)&&!confirm('فيه فاتورة مفتوحة فيها بنود — هتتمسح وتتحط الفاتورة اللي في الملف مكانها. تكمل؟'))return;
+ newSale();if(c)SALE.customerId=c.id;const d=xinvDate(kv['التاريخ']);if(d)SALE.date=d;
+ SALE.paid=num(toEn(String(kv['المدفوع']??kv['المدفوع مع الفاتوره']??'0')));SALE.method=xinvMethod(kv['طريقه الدفع']??kv['اتدفع ازاي']??'');SALE.discount=num(toEn(String(kv['الخصم']??'0')));SALE.note=String(kv['ملاحظات']??kv['ملاحظه']??'').trim();
+ const used=new Set();let nStock=0,nFree=0;
+ lines.forEach(l=>{if(l.q&&!l.ms.length){SALE.free.push({name:l.name,color:l.color,rolls:[],qty:l.q,unit:'قطعة',price:l.price});nFree++;return}
+  const its=D.items.filter(i=>normAr(i.name)===normAr(l.name));const rest=[];
+  l.ms.forEach(m=>{const R=stock().find(R=>its.some(i=>i.id===R.itemId)&&(!l.color||String(R.color)===l.color)&&Math.abs(R.meters-m)<0.001&&!used.has(R.id));if(R){used.add(R.id);SALE.rolls.push({rollId:R.id,itemId:R.itemId,color:R.color,meters:R.meters,price:l.price,cost:R.cost});nStock++}else rest.push(m)});
+  if(rest.length){SALE.free.push({name:l.name,color:l.color,rolls:rest,qty:0,unit:'',price:l.price});nFree+=rest.length}});
+ go('sale');if(c){const ci_=$('#s_cust');if(ci_)ci_.value=c.name;saleSetCust(c.name)}else{const ci_=$('#s_cust');if(ci_)ci_.value=cname}
+ saleRenderLines();if(typeof saleCalc==='function')saleCalc();
+ const tot=lines.reduce((a,l)=>a+(l.ms.length?l.ms.reduce((x,y)=>x+y,0):l.q)*l.price,0);
+ modal('📥 الفاتورة اتحملت من الإكسيل',`<div class="ok">اتحطت في فاتورة البيع — <b>راجعها ودوس حفظ</b>.</div>
+ <p>العميل: <b>${esc(cname||'—')}</b>${c?'':' <span class="red">(مش موجود في البرنامج — اختاره أو ضيفه قبل الحفظ)</span>'}<br>التاريخ: <b>${fd(SALE.date)}</b> • المدفوع: <b>${fmt(SALE.paid)}</b> (${METHODS[SALE.method]})<br>
+ ${lines.map(l=>`• ${esc(l.name)}${l.color?' لون '+esc(l.color):''}: ${l.ms.length?l.ms.length+' توب = '+fmt(l.ms.reduce((a,b)=>a+b,0))+' م':l.q+' قطعة'} × ${fmt(l.price)}`).join('<br>')}<br>
+ إجمالي البضاعة: <b>${fmt(tot)}</b></p><p class="muted">${nStock} توب لقيتهم في المخزن وهيطلعوا منه • ${nFree?nFree+' بند/توب مش في المخزن اتحطوا «بند من غير مخزن»':'كله من المخزن'}</p>
+ <div class="row end"><button class="btn gold" onclick="closeModal()">تمام، هراجع</button></div>`)}
 </script>
 </body>
 </html>
