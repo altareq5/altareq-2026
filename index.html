@@ -1292,7 +1292,7 @@ function payBal(st,r){const ids=[r.id,r.id+'_d'];const L=st.filter(x=>ids.includ
 receiptDoc=function(r){const c=cust(r.customerId),b=r.cancelled?null:payBal(custStatement(c.id),r);
  return `<div class="doc">${r.cancelled?'<div class="stamp">ملغي</div>':''}${band()}<div class="inner"><div class="meta"><div><div class="ttl">إيصال استلام نقدية</div><div>رقم الإيصال: <b>${r.no}</b></div><div>التاريخ: <b>${fd(r.date)}</b></div></div><div class="box"><div>استلمنا من السيد / <b>${esc(c.name)}</b></div>${c.phone?`<div>ت: <span dir="ltr">${esc(c.phone)}</span></div>`:''}</div></div>
  <table><tr><th>البيان</th><th>المبلغ</th></tr>${num(r.amount)?`<tr><td style="text-align:right">مبلغ مستلم — ${METHODS[r.method]}${r.wallet?` على <span dir="ltr">${esc(r.wallet)}</span>`:''}${r.note?' — '+esc(r.note):''}</td><td><b>${fmt(r.amount)}</b></td></tr>`:''}${num(r.discount)?`<tr><td style="text-align:right">خصم مسموح به</td><td><b>${fmt(r.discount)}</b></td></tr>`:''}</table>
- <div class="totals"><div style="flex:1"></div><table>${b?`<tr><td>الرصيد قبل السداد</td><td>${fmt(b.before)}</td></tr>`:''}<tr><td>المدفوع</td><td>${fmt(r.amount)}</td></tr>${num(r.discount)?`<tr><td>الخصم</td><td>${fmt(r.discount)}</td></tr>`:''}${b?`<tr class="grand"><td>الباقي على العميل</td><td>${fmt(b.after)}</td></tr>`:''}</table></div>
+ <div class="totals"><div style="flex:1"></div><table>${b?dayAcctRows(c.id,r.date,[r.id,r.id+'_d'],`<tr><td>الرصيد قبل السداد</td><td>${fmt(b.before)}</td></tr><tr><td>المدفوع</td><td>${fmt(r.amount)}</td></tr>${num(r.discount)?`<tr><td>الخصم</td><td>${fmt(r.discount)}</td></tr>`:''}<tr class="grand"><td>الباقي على العميل</td><td>${fmt(b.after)}</td></tr>`):`<tr><td>المدفوع</td><td>${fmt(r.amount)}</td></tr>`}</table></div>
  <div class="sign"><div>توقيع المستلم</div><div>عن الشركة</div></div>${foot()}</div></div>`};
 function supPayDoc(x){const s=sup(x.supplierId),b=x.cancelled?null:payBal(supStatement(s.id),x);
  return `<div class="doc">${x.cancelled?'<div class="stamp">ملغي</div>':''}${band()}<div class="inner"><div class="meta"><div><div class="ttl">إيصال دفع لمستورد</div><div>رقم الدفعة: <b>${x.no}</b></div><div>التاريخ: <b>${fd(x.date)}</b></div></div><div class="box"><div>دفعنا للسيد / <b>${esc(s.name)}</b></div>${s.phone?`<div>ت: <span dir="ltr">${esc(s.phone)}</span></div>`:''}</div></div>
@@ -1818,7 +1818,7 @@ function custRetDoc(r){const c=cust(r.customerId),s=byId(D.sales,r.saleId)||{},s
  <div class="box"><div>السيد / <b>${esc(c.name)}</b></div>${c.phone?`<div>ت: <span dir="ltr">${esc(c.phone)}</span></div>`:''}</div></div>
  <table><tr><th>م</th><th>الصنف</th><th>كود اللون</th><th>عدد التوبات</th><th>أمتار التوبات</th><th>إجمالي الأمتار</th><th>سعر المتر</th><th>القيمة</th></tr>${L.map((l,k)=>{const m=l.rolls.reduce((a,b)=>a+b,0);tm+=m;tr+=l.rolls.length;return `<tr><td>${k+1}</td><td><b>${esc(l.name)}</b></td><td>${esc(l.color||'—')}</td><td>${l.rolls.length}</td><td class="ms">${l.rolls.map(fmt).join(' • ')}</td><td>${fmt(m)}</td><td>${fmt(l.price)}</td><td><b>${fmt(m*l.price)}</b></td></tr>`}).join('')}
  <tr><td colspan="3"><b>الإجمالي</b></td><td><b>${tr}</b></td><td></td><td><b>${fmt(tm)}</b></td><td></td><td><b>${fmt(r.value)}</b></td></tr></table>
- <div class="totals"><div style="flex:1">${r.note?'<b>ملاحظات:</b> '+esc(r.note):''}</div><table><tr class="grand"><td>قيمة المرتجع</td><td>${fmt(r.value)}</td></tr>${s.no?`<tr><td>فاتورة #${s.no} قبل المرتجع</td><td>${fmt(invNet(s))}</td></tr><tr><td>فاتورة #${s.no} بعد كل المرتجعات</td><td>${fmt(saleNet(s))}</td></tr>`:''}${r.cancelled?'':`<tr><td>الرصيد قبل المرتجع</td><td>${fmt(after+r.value)}</td></tr><tr class="grand"><td>الباقي على العميل</td><td>${fmt(after)}</td></tr>`}</table></div>
+ <div class="totals"><div style="flex:1">${r.note?'<b>ملاحظات:</b> '+esc(r.note):''}</div><table><tr class="grand"><td>قيمة المرتجع</td><td>${fmt(r.value)}</td></tr>${s.no?`<tr><td>فاتورة #${s.no} قبل المرتجع</td><td>${fmt(invNet(s))}</td></tr><tr><td>فاتورة #${s.no} بعد كل المرتجعات</td><td>${fmt(saleNet(s))}</td></tr>`:''}${r.cancelled?'':dayAcctRows(c.id,r.date,[r.id],`<tr><td>الرصيد قبل المرتجع</td><td>${fmt(after+r.value)}</td></tr><tr class="grand"><td>الباقي على العميل</td><td>${fmt(after)}</td></tr>`)}</table></div>
  <div class="sign"><div>توقيع العميل</div><div>عن الشركة</div></div>${foot()}</div></div>`}
 function showCustReturn(id){const r=byId(D.custReturns,id);modal('مرتجع #'+r.no+' — '+esc(cust(r.customerId).name),`${custRetDoc(r)}<div class="row end mt">${!r.cancelled?`<button class="btn danger" onclick="cancelCustReturn('${r.id}')">إلغاء المرتجع</button>`:''}<button class="btn ghost" onclick="waCustRet('${r.id}')">📤 ابعت للعميل (صورة / PDF)</button><button class="btn gold" onclick="printDoc(custRetDoc(byId(D.custReturns,'${r.id}')))">طباعة</button></div>`,true)}
 function waCustRet(id){const r=byId(D.custReturns,id),c=cust(r.customerId);shareDoc(custRetDoc(r),`مرتجع ${r.no} - ${c.name}`,c.phone)}
@@ -1835,7 +1835,7 @@ function prevSaleInfo(s){const L=live(D.sales).filter(x=>x.customerId===s.custom
 function lastRow(s){if(s.cancelled)return '';const L=prevSaleInfo(s);if(!L)return '';const st=custStatement(s.customerId),k=st.findIndex(x=>x.ref===s.id),b=k>0?st[k-1].bal:0;return `<tr><td>الباقي من آخر فاتورة (#${L.s.no} — ${fd(L.s.date)})${Math.abs(b)<0.005?' <small style="color:var(--green)">✔ اتدفعت بالكامل</small>':''}</td><td>${fmt(b)}</td></tr>`}
 
 /* ================= تطبيق قابل للتسطيب + تحديث تلقائي ================= */
-const APP_VERSION='202611081344';
+const APP_VERSION='202611081346';
 if(/^https?:$/.test(location.protocol)&&'serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 let INSTALL_EVT=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();INSTALL_EVT=e;const b=$('#installBtn');if(b)b.hidden=false});
 async function installApp(){if(!INSTALL_EVT)return toast('من قايمة المتصفح (⋮) اختار «تثبيت التطبيق» أو Install','err');INSTALL_EVT.prompt();await INSTALL_EVT.userChoice;INSTALL_EVT=null;const b=$('#installBtn');if(b)b.hidden=true}
@@ -2061,6 +2061,13 @@ function saleTail(s,prev,finalOld,manual,afterM){
  ${X.recs.map(r=>`${num(r.amount)>0?`<tr class="retrow"><td>دفعة #${r.no} (${METHODS[r.method]||''}${r.wallet?' على '+esc(r.wallet):''})${r.note?' — '+esc(r.note):''}</td><td>− ${fmt(r.amount)}</td></tr>`:''}${num(r.discount)?`<tr class="retrow"><td>خصم${r.no?' مع دفعة #'+r.no:''}</td><td>− ${fmt(r.discount)}</td></tr>`:''}`).join('')}
  ${X.rets.map(r=>`<tr class="retrow"><td>مرتجع #${r.no}${r.saleId?' (من فاتورة #'+((byId(D.sales,r.saleId)||{}).no||'')+')':''} <small>${esc(desc(r))}</small></td><td>− ${fmt(r.value)}</td></tr>`).join('')}
  <tr class="grand"><td>الباقي على العميل</td><td>${fmt(final)}</td></tr>`}
+
+/* ================= حساب اليوم كله في المرتجع وإيصال الدفعة ================= */
+function dayAcctRows(cid,date,refs,fallback){const st=custStatement(cid),E=st.filter(x=>x.date===date);if(E.length<=1)return fallback;
+ const before=st.filter(x=>x.date<date),prev=before.length?before[before.length-1].bal:0,final=E[E.length-1].bal;
+ return `<tr><td colspan="2" style="text-align:center;background:#f8f4ea"><b>حساب يوم ${fd(date)} كله</b></td></tr><tr><td>الرصيد القديم (قبل اليوم ده)</td><td>${fmt(prev)}</td></tr>
+ ${E.map(x=>{const own=refs.includes(x.ref);return `<tr class="${x.credit?'retrow':''}"${own?' style="font-weight:800"':''}><td>${esc(x.desc)}${own?' ◂':''}</td><td>${x.debit?'+ '+fmt(x.debit):'− '+fmt(x.credit)}</td></tr>`}).join('')}
+ <tr class="grand"><td>الباقي على العميل آخر اليوم</td><td>${fmt(final)}</td></tr>`}
 </script>
 </body>
 </html>
