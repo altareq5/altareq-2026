@@ -186,6 +186,19 @@ table.t tr.cancel td{color:#9ca3af;text-decoration:line-through}
 <div id="print-area"></div>
 
 <script>
+/* ===== الوقت الصح: البرنامج ما يعتمدش على ساعة الجهاز ===== */
+(function(){const R=Date,rn=R.now.bind(R);let off=0;try{off=+localStorage.getItem('altareq_clockoff')||0}catch(e){}
+ window.CLOCK={get off(){return off},set off(v){off=v;try{localStorage.setItem('altareq_clockoff',String(v))}catch(e){}},synced:false,real:rn};
+ class SDate extends R{constructor(...a){a.length?super(...a):super(rn()+off)}static now(){return rn()+off}}
+ window.Date=SDate})();
+async function clockSync(){const urls=['version.txt?t='+Date.now()];try{if(Cloud&&Cloud.cfg&&Cloud.cfg.url)urls.push(Cloud.cfg.url.replace(/\/$/,'')+'/auth/v1/health')}catch(e){}
+ for(const u of urls){try{const t0=CLOCK.real(),r=await fetch(u,{cache:'no-store',headers:u.includes('/auth/')&&Cloud.cfg.key?{apikey:Cloud.cfg.key}:{}}),t1=CLOCK.real(),h=r.headers.get('date');if(!h)continue;const srv=new Date(h).getTime();if(!isFinite(srv))continue;
+  const o=Math.round(srv-(t0+t1)/2);CLOCK.off=Math.abs(o)<90e3?0:o;CLOCK.synced=true;clockBanner();return}catch(e){}}clockBanner()}
+function clockBanner(){let b=document.getElementById('clockbar');const bad=Math.abs(CLOCK.off)>=90e3;if(!bad){b&&b.remove();return}
+ if(!b){b=document.createElement('div');b.id='clockbar';b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;font:700 15px Cairo,Tahoma;padding:8px 14px;text-align:center;direction:rtl';document.body.appendChild(b)}
+ const dev=new Date(CLOCK.real());b.innerHTML=`⚠ ساعة الجهاز ده غلط (${dev.toLocaleString('ar-EG')}) — البرنامج شغال بالتاريخ الصح: <b>${new Date().toLocaleString('ar-EG')}</b>. ظبط ساعة الجهاز من الإعدادات. <button onclick="dateFixModal()" style="margin-right:10px;border:0;border-radius:8px;padding:3px 12px;font:700 14px Cairo;cursor:pointer">🕒 تصحيح تواريخ الفواتير</button>`}
+setTimeout(clockSync,800);setInterval(clockSync,20*60e3);window.addEventListener('online',clockSync);
+
 /* ================= أدوات ================= */
 const $=(s,r=document)=>r.querySelector(s);
 const $$=(s,r=document)=>[...r.querySelectorAll(s)];
@@ -1835,7 +1848,7 @@ function prevSaleInfo(s){const L=live(D.sales).filter(x=>x.customerId===s.custom
 function lastRow(s){if(s.cancelled)return '';const L=prevSaleInfo(s);if(!L)return '';const st=custStatement(s.customerId),k=st.findIndex(x=>x.ref===s.id),b=k>0?st[k-1].bal:0;return `<tr><td>الباقي من آخر فاتورة (#${L.s.no} — ${fd(L.s.date)})${Math.abs(b)<0.005?' <small style="color:var(--green)">✔ اتدفعت بالكامل</small>':''}</td><td>${fmt(b)}</td></tr>`}
 
 /* ================= تطبيق قابل للتسطيب + تحديث تلقائي ================= */
-const APP_VERSION='202611091629';
+const APP_VERSION='202611121252';
 if(/^https?:$/.test(location.protocol)&&'serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 let INSTALL_EVT=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();INSTALL_EVT=e;const b=$('#installBtn');if(b)b.hidden=false});
 async function installApp(){if(!INSTALL_EVT)return toast('من قايمة المتصفح (⋮) اختار «تثبيت التطبيق» أو Install','err');INSTALL_EVT.prompt();await INSTALL_EVT.userChoice;INSTALL_EVT=null;const b=$('#installBtn');if(b)b.hidden=true}
@@ -2068,6 +2081,24 @@ function dayAcctRows(cid,date,refs,fallback){const st=custStatement(cid),E=st.fi
  return `<tr><td colspan="2" style="text-align:center;background:#f8f4ea"><b>حساب يوم ${fd(date)} كله</b></td></tr><tr><td>الرصيد القديم (قبل اليوم ده)</td><td>${fmt(prev)}</td></tr>
  ${E.map(x=>{const own=refs.includes(x.ref);return `<tr class="${x.credit?'retrow':''}"${own?' style="font-weight:800"':''}><td>${esc(x.desc)}${own?' ◂':''}</td><td>${x.debit?'+ '+fmt(x.debit):'− '+fmt(x.credit)}</td></tr>`}).join('')}
  <tr class="grand"><td>الباقي على العميل آخر اليوم</td><td>${fmt(final)}</td></tr>`}
+/* ===== تصحيح تواريخ آخر العمليات ===== */
+function dateFixOps(){const L=[];const add=(arr,kind,label,name,amt)=>live(arr||[]).forEach(x=>L.push({kind,id:x.id,no:x.no,date:x.date,at:x.createdAt||0,by:x.by||'',label,name:name(x),amt:amt(x)}));
+ add(D.sales,'sales','فاتورة بيع',x=>cust(x.customerId).name,x=>saleNet(x));add(D.receipts,'receipts','تحصيل',x=>cust(x.customerId).name,x=>num(x.amount));
+ add(D.custReturns,'custReturns','مرتجع عميل',x=>cust(x.customerId).name,x=>x.value);add(D.purchases,'purchases','فاتورة شراء',x=>sup(x.supplierId).name,x=>num(x.goods)||0);
+ add(D.supPayments,'supPayments','دفعة لمستورد',x=>sup(x.supplierId).name,x=>num(x.amount));add(D.supReturns,'supReturns','مرتجع لمستورد',x=>sup(x.supplierId).name,x=>x.value);
+ return L.sort((a,b)=>b.at-a.at).slice(0,25)}
+let DFX_N=25;
+function dateFixModal(){if(!isAdmin())return toast('تصحيح التواريخ للمدير بس','err');const L=dateFixOps(),t=todayLocal();
+ modal('🕒 تصحيح تواريخ آخر العمليات',`<p>دي آخر العمليات اللي اتسجلت (الأحدث فوق). علّم على اللي تاريخها غلط، واختار التاريخ الصح، ودوس «صحّح». الأرصدة بتتحسب من جديد لوحدها.</p>
+ <div class="grid g3"><label>التاريخ الصح<input type="date" id="dfx_d" value="${t}"></label><div></div><div class="row end" style="align-items:end"><button class="btn sm ghost" onclick="$$('.dfx').forEach(c=>c.checked=c.dataset.date!==$('#dfx_d').value&&c.closest('tr').dataset.recent==='1')">علّم آخر 6 تاريخهم مختلف</button></div></div>
+ <div class="tw"><table class="t"><tr><th></th><th>العملية</th><th>رقم</th><th>الاسم</th><th>المبلغ</th><th>التاريخ المسجل</th><th>اتسجلت بواسطة</th></tr>
+ ${L.map((x,i)=>`<tr data-recent="${i<6?1:0}"${x.date!==t?' style="background:#fff4e5"':''}><td><input type="checkbox" class="dfx" data-k="${x.kind}" data-id="${x.id}" data-date="${x.date}"></td><td>${x.label}</td><td>${x.no||''}</td><td><b>${esc(x.name||'')}</b></td><td>${fmt(x.amt)}</td><td><b>${fd(x.date)}</b></td><td>${esc(x.by)}</td></tr>`).join('')}</table></div>
+ <p class="muted">الصفوف اللي بالبرتقالي تاريخها مش النهارده (${fd(t)}).</p><div class="row end mt"><button class="btn gold" onclick="dateFixSave()">صحّح التاريخ للمعلَّم</button></div>`,true)}
+async function dateFixSave(){const nd=$('#dfx_d').value;if(!nd)return toast('اختار التاريخ','err');const sel=$$('.dfx').filter(c=>c.checked);if(!sel.length)return toast('علّم على العمليات الأول','err');
+ const ch=[];sel.forEach(c=>{const x=byId(D[c.dataset.k],c.dataset.id);if(!x||x.date===nd)return;const lbl={sales:'فاتورة بيع',receipts:'تحصيل',custReturns:'مرتجع عميل',purchases:'فاتورة شراء',supPayments:'دفعة لمستورد',supReturns:'مرتجع لمستورد'}[c.dataset.k];ch.push(`${lbl} #${x.no||''}: ${fd(x.date)} ← ${fd(nd)}`);x.date=nd});
+ if(!ch.length){closeModal();return toast('مفيش تغيير')}await commit('تصحيح تواريخ',ch.join(' • '));closeModal();toast(`✔ اتصحح تاريخ ${ch.length} عملية`);go(CUR)}
+const _vClosingDF=VIEWS.closing;VIEWS.closing=function(){_vClosingDF();const ph=$('#view .page-head .row');if(ph&&isAdmin())ph.insertAdjacentHTML('afterbegin','<button class="btn ghost" onclick="dateFixModal()">🕒 تصحيح تواريخ</button>')};
+const _vInvDF=VIEWS.invoices;VIEWS.invoices=function(){_vInvDF();const ph=$('#view .page-head');if(ph&&isAdmin()&&!ph.querySelector('.dfx-btn'))ph.insertAdjacentHTML('beforeend','<button class="btn ghost dfx-btn" onclick="dateFixModal()">🕒 تصحيح تواريخ</button>')};
 </script>
 </body>
 </html>
